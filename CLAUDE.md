@@ -86,4 +86,14 @@ The Webhook Lambda must return `200` to Razorpay within 500 ms. The Fulfillment 
 - Razorpay may retry a webhook with a **new `event_id` for the same payment** (B-4 / V3-3). The `razorpay_payment_id` primary guard is the only thing that catches this; do not rely on `event_id` uniqueness alone.
 - Lambda freezes the process CPU after the HTTP response is flushed. Do not schedule asyncio background tasks in the webhook handler. Use SQS.
 - Fulfillment hook **must be idempotent**: SQS provides at-least-once delivery.
-- HTTP status for unknown `tenant_id` on the webhook route is **400 Bad Request**. The multi-tenant URL space `/payments/
+- HTTP status for unknown `tenant_id` on the webhook route is **400 Bad Request**. The multi-tenant URL space `/payments/webhook/{tenant_id}` is publicly enumerable; returning 404 leaks tenant existence and enables enumeration attacks. 400 is uniform and reveals nothing. Section 14 unit tests that expect 404 must be updated to expect 400; Section 14 chaos tests already specify 400.
+
+## Future Coding Sessions: Editing Rule
+
+Provide targeted fixes and incremental updates only. Do not rewrite entire files. Maintain existing structure and context. Identify exact change locations and minimize token usage.
+
+## Git Operations Rule
+
+Never run `git commit`, `git push`, `git tag`, `git merge`, or any other git command that writes to history or to a remote. Never pass `-c user.email=...` or `-c user.name=...`, and never run `git config user.email` or `git config user.name`. The user owns their git identity configuration.
+
+When the user asks for a commit, stage with `git add` if needed, then output the proposed commit message and the exact command (with the message inline) for the user to run themselves. Read-only git operations (`status`, `log`, `diff`, `show`, `branch`) are fine without asking.
