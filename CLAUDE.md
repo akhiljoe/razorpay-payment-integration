@@ -84,6 +84,13 @@ Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` o
 - `payment.authorized` does NOT insert a `payments` row. Only terminal payment outcomes (`captured`, `failed`) do.
 - `refund.processed` UPDATEs the existing captured `payments` row; do NOT insert a new `payments` row. Insert into `refunds` instead.
 
+## Token Management & Context Protocol
+
+- Do not ingest or process `designs/DESIGN_v5.md` for routine tasks (debugging, linting, or documentation).
+- Only reference `designs/DESIGN_v5.md` when the task explicitly requires modifying the state machine, altering the database schema, or changing the core webhook architecture.
+- For all other tasks, the **Critical Invariants**, **Architecture**, **State Machine**, and **Webhook Event Routing** sections of this `CLAUDE.md` (plus the `.claude/rules/` files) are the sufficient source of truth.
+- When providing code, prioritize functional logic over boilerplate unless a full rewrite is requested, to minimize output token costs.
+
 ## Editing Rule
 
 Provide targeted fixes and incremental updates only. Do not rewrite entire files. Maintain existing structure and context. Identify exact change locations and minimize token usage.

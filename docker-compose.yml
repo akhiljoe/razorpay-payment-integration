@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: razorpay-postgres
+    environment:
+      POSTGRES_USER: razorpay
+      POSTGRES_PASSWORD: razorpay
+      POSTGRES_DB: razorpay_checkout
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U razorpay -d razorpay_checkout"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:3.7
+    container_name: razorpay-localstack
+    environment:
+      SERVICES: "sqs,lambda,logs,secretsmanager,events,iam,cloudwatch,sts"
+      DEFAULT_REGION: "ap-south-1"
+      DEBUG: "0"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LAMBDA_EXECUTOR: "docker"
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-volume:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  localstack-volume:
