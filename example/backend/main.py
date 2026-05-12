@@ -384,7 +384,10 @@ async def dev_simulate(payload: dict, request: Request) -> JSONResponse:
 
     config: RazorpayConfig = request.app.state.razorpay_config
     secret = config.webhook_secret.get_secret_value()
-    event_id = f"evt_{uuid.uuid4().hex[:24]}"
+    # Caller can supply an event_id to exercise fast-path duplicate detection.
+    event_id = payload.get("event_id") or f"evt_{uuid.uuid4().hex[:24]}"
+    # Caller can request a bad signature to exercise producer-side rejection.
+    force_bad_signature = bool(payload.get("force_bad_signature"))
 
     event_payload = _build_simulator_payload(
         event_type,
@@ -395,7 +398,10 @@ async def dev_simulate(payload: dict, request: Request) -> JSONResponse:
         event_id=event_id,
     )
     body = json.dumps(event_payload, separators=(",", ":")).encode("utf-8")
-    signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    if force_bad_signature:
+        signature = "deadbeef" * 8
+    else:
+        signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     target = f"http://localhost:8000/payments/webhook/{config.tenant_id}"
     async with httpx.AsyncClient(timeout=10.0) as client:

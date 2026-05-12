@@ -300,6 +300,10 @@ async function startCheckout() {
     },
     modal: {
       ondismiss: function() {
+        // Customer closed the modal without paying. In production, the
+        // order quietly stays at `created` until Razorpay's stale-order
+        // cleanup runs hours later. Same behavior locally — we don't
+        // fire any webhook, just reset the button.
         $("btn-pay").disabled = false;
         $("btn-pay").textContent = "Pay Now";
       },
@@ -356,8 +360,33 @@ async function onRazorpaySuccess(rzpResp) {
   pollUntilFulfilled(currentOrder.order_id);
 }
 
-function onRazorpayFailure(err) {
-  showFailure(err.description || "Payment failed", err.reason || err.code || "Unknown error");
+async function onRazorpayFailure(err) {
+  // LOCAL DEV ONLY: in production Razorpay would fire a `payment.failed`
+  // webhook automatically. Localhost can't receive that, so we self-simulate
+  // here so the order transitions `created → failed` on our side too.
+  // Without this, the order stays at `created` indefinitely even though the
+  // Razorpay dashboard correctly shows the failure.
+  const paymentId = err?.metadata?.payment_id
+    || ("pay_failed_" + Math.random().toString(36).slice(2, 14));
+  try {
+    if (currentOrder?.razorpay_order_id) {
+      await fetch("/dev/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          event_type: "payment.failed",
+          razorpay_order_id: currentOrder.razorpay_order_id,
+          razorpay_payment_id: paymentId,
+          amount: currentOrder.amount,
+        }),
+      });
+    }
+  } catch (e) { /* swallow; UI still shows failure */ }
+  showFailure(
+    err.description || "Payment failed",
+    err.reason || err.code || "Unknown error",
+    paymentId ? { "Payment ID": paymentId } : {}
+  );
 }
 
 function showFailure(title, sub, fields={}) {

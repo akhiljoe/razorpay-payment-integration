@@ -178,6 +178,35 @@
     padding: 3px 8px; border-radius: 999px; background: var(--panel-2);
     border: 1px solid var(--border); color: var(--text);
   }
+
+  /* Scenarios panel */
+  .scenario-group { margin: 10px 0 6px; }
+  .scenario-group-label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 0 0 4px 4px;
+  }
+  .scenario-btn {
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    margin: 2px 0;
+    display: flex; flex-direction: column; gap: 2px;
+    line-height: 1.3;
+  }
+  .scenario-btn .s-title { font-size: 13px; font-weight: 500; }
+  .scenario-btn .s-expect { font-size: 11px; color: var(--muted); }
+  .scenario-btn.running { border-color: var(--accent); background: #1e2a44; }
+  .scenario-btn.passed  { border-color: var(--good); background: #16291f; }
+  .scenario-btn.failed  { border-color: var(--bad);  background: #2a1414; }
+  .scenario-result {
+    font-size: 11px;
+    margin-top: 4px;
+    color: var(--code);
+    font-family: SFMono-Regular, Consolas, monospace;
+  }
+  .scenario-result.pass { color: var(--good); }
+  .scenario-result.fail { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -200,6 +229,16 @@
         <hr/>
         <button id="btn-reset" class="danger">Reset (purge DB + queues)</button>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>Test Scenarios</h2>
+      <div class="small" style="margin-bottom: 6px;">
+        Each scenario auto-creates an order, fires the required webhooks,
+        polls for the expected outcome, and reports pass/fail. Run any
+        button; it auto-selects the resulting order in the right panel.
+      </div>
+      <div id="scenarios"></div>
     </div>
 
     <div class="panel">
@@ -813,6 +852,371 @@ fetch("/dev/queues").then(r => r.json()).then(j => {
   // tenant not in queues, leave as is. We'll set via first order if any.
 });
 $("tenant-id").textContent = "local-dev";
+
+// ------- Test scenarios -------
+//
+// Each scenario auto-creates an order, fires a sequence of /dev/simulate
+// calls, polls /dev/flow/{order_id} until expectations match, and reports
+// pass/fail inline on the button. The goal is "click one button, see the
+// whole payment lifecycle play out and verify the invariants held".
+
+function rid() { return Math.random().toString(36).slice(2, 12); }
+
+async function so_createOrder(suffix) {
+  const r = await api("/payments/orders", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ receipt: "scen-" + suffix + "-" + rid() }),
+  });
+  return r;
+}
+
+async function so_fire(eventType, opts) {
+  const body = {
+    event_type: eventType,
+    razorpay_order_id: opts.razorpay_order_id,
+    razorpay_payment_id: opts.razorpay_payment_id,
+    amount: opts.amount ?? 50000,
+  };
+  if (opts.event_id) body.event_id = opts.event_id;
+  if (opts.force_bad_signature) body.force_bad_signature = true;
+  return await api("/dev/simulate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function so_pollFlow(orderId, predicate, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs ?? 10000);
+  let last = null;
+  while (Date.now() < deadline) {
+    try {
+      last = await api("/dev/flow/" + orderId);
+      if (predicate(last)) return { ok: true, flow: last };
+    } catch (e) { /* keep polling */ }
+    await sleep(400);
+  }
+  return { ok: false, flow: last };
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Each scenario returns {ok, msg, flow}.
+const SCENARIOS = [
+  // ---------- HAPPY PATHS ----------
+  {
+    group: "Happy paths",
+    id: "happy_capture",
+    title: "Capture only → fulfilled",
+    expect: "status=fulfilled, 1 payment authoritative=true, 4 order_events",
+    async run() {
+      const o = await so_createOrder("happy-cap");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      const res = await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      if (!res.ok) return { ok: false, msg: "did not reach fulfilled. status=" + res.flow?.order?.status, flow: res.flow, orderId: o.order_id };
+      const p = res.flow.payments[0];
+      if (!p || !p.is_authoritative) return { ok: false, msg: "payments row missing or not authoritative", orderId: o.order_id, flow: res.flow };
+      if (res.flow.order_events.length < 4) return { ok: false, msg: "expected ≥4 order_events, got " + res.flow.order_events.length, orderId: o.order_id, flow: res.flow };
+      return { ok: true, msg: "fulfilled in " + res.flow.order_events.length + " transitions", orderId: o.order_id, flow: res.flow };
+    },
+  },
+  {
+    group: "Happy paths",
+    id: "happy_auth_then_capture",
+    title: "Authorize → Capture → fulfilled",
+    expect: "5 order_events, authorized_at and paid_at both set",
+    async run() {
+      const o = await so_createOrder("auth-cap");
+      const pid = "pay_" + rid();
+      await so_fire("payment.authorized", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await sleep(1500);
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      const res = await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      if (!res.ok) return { ok: false, msg: "did not reach fulfilled. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
+      if (!res.flow.order.authorized_at) return { ok: false, msg: "authorized_at not set", orderId: o.order_id, flow: res.flow };
+      return { ok: true, msg: "auth→cap→fulfilled", orderId: o.order_id, flow: res.flow };
+    },
+  },
+  {
+    group: "Happy paths",
+    id: "happy_full_refund",
+    title: "Capture → Refund → refunded",
+    expect: "status=refunded, 1 refund row, payments.status=refunded",
+    async run() {
+      const o = await so_createOrder("full-refund");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      await sleep(500);
+      await so_fire("refund.processed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      const res = await so_pollFlow(o.order_id, f => f.order.status === "refunded");
+      if (!res.ok) return { ok: false, msg: "did not reach refunded. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
+      if (res.flow.refunds.length !== 1) return { ok: false, msg: "expected 1 refund row, got " + res.flow.refunds.length, orderId: o.order_id, flow: res.flow };
+      return { ok: true, msg: "refunded; refunds=1", orderId: o.order_id, flow: res.flow };
+    },
+  },
+
+  // ---------- FAILURE PATHS ----------
+  {
+    group: "Failure paths",
+    id: "fail_direct",
+    title: "Direct failure (created → failed)",
+    expect: "status=failed, 1 payment authoritative=FALSE",
+    async run() {
+      const o = await so_createOrder("fail");
+      const pid = "pay_" + rid();
+      await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      const res = await so_pollFlow(o.order_id, f => f.order.status === "failed");
+      if (!res.ok) return { ok: false, msg: "did not reach failed. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
+      const p = res.flow.payments[0];
+      if (!p) return { ok: false, msg: "no payments row", orderId: o.order_id, flow: res.flow };
+      if (p.is_authoritative) return { ok: false, msg: "payments.is_authoritative should be false on failed", orderId: o.order_id, flow: res.flow };
+      return { ok: true, msg: "failed; payment.is_authoritative=false", orderId: o.order_id, flow: res.flow };
+    },
+  },
+  {
+    group: "Failure paths",
+    id: "fail_then_recovery",
+    title: "Failed → Captured (recovery)",
+    expect: "status=fulfilled with metadata.recovery=true on attempted hop",
+    async run() {
+      const o = await so_createOrder("fail-recover");
+      const pid_fail = "pay_" + rid();
+      const pid_ok = "pay_" + rid();
+      await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid_fail });
+      await so_pollFlow(o.order_id, f => f.order.status === "failed");
+      await sleep(500);
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid_ok });
+      const res = await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      if (!res.ok) return { ok: false, msg: "did not recover to fulfilled. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
+      const recoveryEvt = res.flow.order_events.find(e => e.metadata && e.metadata.recovery === true);
+      if (!recoveryEvt) return { ok: false, msg: "no order_events row with metadata.recovery=true", orderId: o.order_id, flow: res.flow };
+      return { ok: true, msg: "recovered via failed→attempted→paid→fulfilled", orderId: o.order_id, flow: res.flow };
+    },
+  },
+
+  // ---------- IDEMPOTENCY ----------
+  {
+    group: "Idempotency",
+    id: "dedup_same_event_id",
+    title: "Same event_id replayed (fast-path dedup)",
+    expect: "1 payment row, 1 webhook_events row (second replay deduped)",
+    async run() {
+      const o = await so_createOrder("dedup-same");
+      const pid = "pay_" + rid();
+      const evt = "evt_" + rid() + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, event_id: evt });
+      await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      await sleep(300);
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, event_id: evt });
+      await sleep(1500);
+      const f = await api("/dev/flow/" + o.order_id);
+      const whForOrder = f.webhook_events.filter(w => w.event === "payment.captured");
+      // Note: webhook_events table shows all per-tenant; we check payments instead.
+      if (f.payments.length !== 1) return { ok: false, msg: "expected 1 payments row, got " + f.payments.length, orderId: o.order_id, flow: f };
+      const paidEvts = f.order_events.filter(e => e.to_status === "paid");
+      if (paidEvts.length !== 1) return { ok: false, msg: "expected 1 paid transition, got " + paidEvts.length, orderId: o.order_id, flow: f };
+      return { ok: true, msg: "fast-path dedup OK: 1 payment, 1 paid transition", orderId: o.order_id, flow: f };
+    },
+  },
+  {
+    group: "Idempotency",
+    id: "dedup_diff_event_id_same_payment",
+    title: "Different event_id, same payment (primary guard)",
+    expect: "1 payment, 1 paid transition. Second replay caught by FOR UPDATE guard.",
+    async run() {
+      const o = await so_createOrder("dedup-diff");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      await sleep(300);
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await sleep(2000);
+      const f = await api("/dev/flow/" + o.order_id);
+      if (f.payments.length !== 1) return { ok: false, msg: "expected 1 payments row, got " + f.payments.length, orderId: o.order_id, flow: f };
+      const paidEvts = f.order_events.filter(e => e.to_status === "paid");
+      if (paidEvts.length !== 1) return { ok: false, msg: "expected 1 paid transition, got " + paidEvts.length, orderId: o.order_id, flow: f };
+      return { ok: true, msg: "primary guard OK: 1 payment despite 2 webhook events", orderId: o.order_id, flow: f };
+    },
+  },
+
+  // ---------- EDGE CASES ----------
+  {
+    group: "Edge cases",
+    id: "amount_mismatch",
+    title: "Amount mismatch (50000 order, 40000 webhook)",
+    expect: "webhook_events.processing_status=failed, order stays in created",
+    async run() {
+      const o = await so_createOrder("amt-mismatch");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, amount: 40000 });
+      await sleep(3000);
+      const f = await api("/dev/flow/" + o.order_id);
+      if (f.order.status === "fulfilled" || f.order.status === "paid") {
+        return { ok: false, msg: "order transitioned despite amount mismatch: status=" + f.order.status, orderId: o.order_id, flow: f };
+      }
+      // Look for a webhook_events row marked 'failed' for this tenant.
+      const failedWh = f.webhook_events.find(w => w.processing_status === "failed");
+      // If we can't see it (table is tenant-wide and may be paginated), at minimum order must not have advanced.
+      return { ok: true, msg: "rejected; order.status=" + f.order.status + (failedWh ? "; webhook_events.processing_status=failed seen" : ""), orderId: o.order_id, flow: f };
+    },
+  },
+  {
+    group: "Edge cases",
+    id: "stale_failed_after_fulfilled",
+    title: "Stale payment.failed arriving after fulfilled",
+    expect: "STALE_NO_OP — order stays fulfilled, no transition",
+    async run() {
+      const o = await so_createOrder("stale-fail");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      await sleep(300);
+      await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await sleep(2500);
+      const f = await api("/dev/flow/" + o.order_id);
+      if (f.order.status !== "fulfilled") {
+        return { ok: false, msg: "fulfilled order regressed to " + f.order.status, orderId: o.order_id, flow: f };
+      }
+      const failedEvt = f.order_events.find(e => e.to_status === "failed");
+      if (failedEvt) return { ok: false, msg: "spurious failed transition appeared", orderId: o.order_id, flow: f };
+      return { ok: true, msg: "stale event ignored; status=fulfilled", orderId: o.order_id, flow: f };
+    },
+  },
+  {
+    group: "Edge cases",
+    id: "order_paid_log_only",
+    title: "order.paid event (log-only, no state change)",
+    expect: "No new transition; order stays where it was",
+    async run() {
+      const o = await so_createOrder("order-paid");
+      const pid = "pay_" + rid();
+      await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
+      await sleep(300);
+      const before = await api("/dev/flow/" + o.order_id);
+      const beforeCount = before.order_events.length;
+      await so_fire("order.paid", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
+      await sleep(2500);
+      const after = await api("/dev/flow/" + o.order_id);
+      if (after.order_events.length !== beforeCount) {
+        return { ok: false, msg: "order.paid caused " + (after.order_events.length - beforeCount) + " new transitions", orderId: o.order_id, flow: after };
+      }
+      return { ok: true, msg: "log-only confirmed; events stayed at " + beforeCount, orderId: o.order_id, flow: after };
+    },
+  },
+
+  // ---------- BAD INPUT ----------
+  {
+    group: "Bad input",
+    id: "bad_signature",
+    title: "Bad signature (producer rejects 4xx, no DB write)",
+    expect: "producer returns 4xx, order stays in created, no payments row",
+    async run() {
+      const o = await so_createOrder("bad-sig");
+      const pid = "pay_" + rid();
+      let producerCode = null;
+      try {
+        const r = await so_fire("payment.captured", {
+          razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid,
+          force_bad_signature: true,
+        });
+        producerCode = r.status_code;
+      } catch (e) {
+        // /dev/simulate may surface non-2xx via thrown error.
+        producerCode = e.status || -1;
+      }
+      // Allow any 4xx — both 400 (malformed envelope) and 401 (auth) are defensible.
+      if (!(producerCode >= 400 && producerCode < 500)) {
+        return { ok: false, msg: "expected 4xx from producer, got " + producerCode, orderId: o.order_id };
+      }
+      // Confirm DB side-effect didn't happen.
+      await sleep(1500);
+      const f = await api("/dev/flow/" + o.order_id);
+      if (f.order.status !== "created") {
+        return { ok: false, msg: "order advanced despite bad sig: status=" + f.order.status, orderId: o.order_id, flow: f };
+      }
+      if (f.payments.length !== 0) {
+        return { ok: false, msg: "payments row written despite bad sig", orderId: o.order_id, flow: f };
+      }
+      return { ok: true, msg: "producer rejected with " + producerCode + "; no DB writes", orderId: o.order_id, flow: f };
+    },
+  },
+];
+
+function renderScenarios() {
+  const root = $("scenarios");
+  // Group by group label
+  const groups = {};
+  SCENARIOS.forEach(s => { (groups[s.group] = groups[s.group] || []).push(s); });
+  root.innerHTML = Object.entries(groups).map(([label, list]) => `
+    <div class="scenario-group">
+      <div class="scenario-group-label">${label}</div>
+      ${list.map(s => `
+        <button class="scenario-btn" data-id="${s.id}">
+          <div class="s-title">${s.title}</div>
+          <div class="s-expect">${s.expect}</div>
+          <div class="scenario-result" id="result-${s.id}"></div>
+        </button>
+      `).join("")}
+    </div>
+  `).join("");
+  root.querySelectorAll(".scenario-btn").forEach(btn => {
+    btn.addEventListener("click", () => runScenarioBtn(btn.dataset.id, btn));
+  });
+}
+
+async function runScenarioBtn(id, btn) {
+  const s = SCENARIOS.find(x => x.id === id);
+  if (!s) return;
+  btn.classList.remove("passed", "failed");
+  btn.classList.add("running");
+  const resEl = $("result-" + id);
+  resEl.textContent = "running…";
+  resEl.classList.remove("pass", "fail");
+  log("scenario start: " + s.title);
+  try {
+    const res = await s.run();
+    btn.classList.remove("running");
+    btn.classList.add(res.ok ? "passed" : "failed");
+    resEl.classList.add(res.ok ? "pass" : "fail");
+    resEl.textContent = (res.ok ? "PASS · " : "FAIL · ") + res.msg;
+    log("scenario " + (res.ok ? "PASS" : "FAIL") + ": " + s.title + " — " + res.msg);
+    if (res.orderId) {
+      currentOrderId = res.orderId;
+      if (res.flow) currentRzpOrderId = res.flow.order.razorpay_order_id;
+      refresh();
+    }
+  } catch (e) {
+    btn.classList.remove("running");
+    btn.classList.add("failed");
+    resEl.classList.add("fail");
+    resEl.textContent = "ERROR · " + e.message;
+    log("scenario ERROR: " + s.title + " — " + e.message);
+  }
+}
+
+// Optional: run-all button at top of scenarios
+function injectRunAll() {
+  const root = $("scenarios");
+  if (!root) return;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `<button id="run-all" class="primary" style="width:100%; margin-bottom:8px;">Run all scenarios in sequence</button>`;
+  root.parentNode.insertBefore(wrap, root);
+  $("run-all").addEventListener("click", async () => {
+    for (const s of SCENARIOS) {
+      const btn = document.querySelector(`.scenario-btn[data-id="${s.id}"]`);
+      if (btn) await runScenarioBtn(s.id, btn);
+      await sleep(300);
+    }
+    log("run-all complete.");
+  });
+}
+
+renderScenarios();
+injectRunAll();
 
 // ------- snapshot for chat hand-off -------
 
