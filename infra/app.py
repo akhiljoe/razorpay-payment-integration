@@ -25,6 +25,7 @@ import sys
 import aws_cdk as cdk
 
 from stacks.foundation import FoundationStack
+from stacks.payments import PaymentsStack
 
 
 def main() -> None:
@@ -52,13 +53,28 @@ def main() -> None:
         env = cdk.Environment(account=account, region=region)
         track = env_cfg.get("track", "free")
 
-        FoundationStack(
+        foundation = FoundationStack(
             app,
             f"razorpay-{env_name}-foundation",
             env=env,
             track=track,
             ops_email=ops_email,
             budget_thresholds_usd=budget_thresholds,
+        )
+
+        # Optional override: caller can pre-provision the DB secret elsewhere
+        # (e.g. via the RDS console or a managed Neon project) and pass the
+        # ARN through context. Otherwise PaymentsStack creates an empty one
+        # the operator fills.
+        db_dsn_secret_arn = env_cfg.get("db_dsn_secret_arn")
+
+        PaymentsStack(
+            app,
+            f"razorpay-{env_name}-payments",
+            env=env,
+            foundation=foundation,
+            track=track,
+            db_dsn_secret_arn=db_dsn_secret_arn,
         )
 
     cdk.Tags.of(app).add("Project", "razorpay-checkout")

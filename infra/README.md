@@ -1,6 +1,9 @@
 # CDK infrastructure (Python)
 
-CDK app provisioning the AWS resources for the Razorpay payment integration. Phase 15 ships only the **FoundationStack** (account-level building blocks). Phase 16 will add the **PaymentsStack** (Lambdas, SQS, EventBridge, secrets) on top.
+CDK app provisioning the AWS resources for the Razorpay payment integration. Two stacks:
+
+- **FoundationStack** (Phase 15) — account-level building blocks (ECR, log groups, ops SNS, billing budgets).
+- **PaymentsStack** (Phase 16) — the runtime: KMS, secrets, SQS queue pairs, 3 Lambda functions, IAM roles, Function URL, EventBridge schedule.
 
 ## Layout
 
@@ -11,7 +14,8 @@ infra/
 ├── pyproject.toml          # Python deps (aws-cdk-lib, constructs)
 ├── stacks/
 │   ├── __init__.py
-│   └── foundation.py       # ECR + log groups + ops SNS + 3 budgets
+│   ├── foundation.py       # ECR + log groups + ops SNS + 3 budgets
+│   └── payments.py         # KMS + secrets + SQS + Lambdas + IAM + URL
 └── README.md               # this file
 ```
 
@@ -65,13 +69,25 @@ See `stacks/foundation.py`. Summary:
 
 All resources are tagged `Project=razorpay-checkout, ManagedBy=cdk, Track=<free|paid>`.
 
-## What's NOT in this stack (yet)
+## What `PaymentsStack` provisions
 
-- Lambdas → Phase 16 (`PaymentsStack`).
-- SQS queues → Phase 16. They're not provisioned by the Foundation because the producer Lambda role policy needs to reference them; both should land in the same stack.
-- API Gateway / Function URLs → Phase 16.
+See `stacks/payments.py`. Summary:
+
+- **KMS customer-managed key** `alias/razorpay-<track>` wrapping SSM SecureStrings + Secrets Manager.
+- **DB credentials Secret** in Secrets Manager (or imported via `db_dsn_secret_arn` context).
+- **2 SQS FIFO queue pairs** with `maxReceiveCount=5`, content-based dedup, 14-day DLQ retention.
+- **3 Lambda DockerImageFunctions** sourcing `:latest` from the Phase 15 ECR repos.
+- **3 IAM roles** with least-privilege scoped policies. The producer role has explicit `Deny` on RDS and the DB secret (Critical Invariant 4).
+- **Producer Function URL** with `auth_type=NONE` + CORS. Public HTTPS endpoint Razorpay POSTs to.
+- **SQS event source mappings** for consumer + fulfillment (batch_size=1 for FIFO ordering).
+- **EventBridge schedule** `rate(5 minutes)` for `stale-paid-monitor`.
+
+## What's NOT in either stack (yet)
+
 - VPC → Free Track has no VPC. Paid Track adds it; gated on `track == "paid"` context.
-- RDS / Neon DB connection → managed outside CDK on Free Track; reference its DSN via SSM SecureString.
+- RDS / Neon DB connection → managed outside CDK on Free Track; reference its DSN via SSM SecureString or imported Secrets Manager ARN.
+- Admin route API Gateway → optional; for now admin lives in the same Lambda as the FastAPI app if deployed that way, or behind the consumer's IAM-protected handler.
+- CloudFront in front of the Function URL → optional; Phase 17 decision.
 
 ## Cost expectations
 
