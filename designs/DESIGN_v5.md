@@ -1615,6 +1615,56 @@ provider setters are set-once. Tests must bind instruments to the
 explicit `MeterProvider` returned from `configure_otel`, not to the global,
 which is why `_rebind_instruments(meter_provider)` accepts an argument.
 
+### 17.12 `_bind_correlation_id` must accept both raw and flattened MessageAttribute shapes (Phase 13)
+
+**Rule.** Both `WebhookConsumer._bind_correlation_id` and
+`FulfillmentProcessor._bind_correlation_id` must handle two shapes of the
+`correlation_id` MessageAttribute: the raw SQS dict
+(`{"StringValue": "uuid", "DataType": "String"}`) that Lambda's
+event-source mapping delivers, and the flattened string (`"uuid"`) that
+most boto3 helpers and any custom pump produces. Falling through to
+`new_correlation_id()` when the attribute is present-but-unparsed silently
+breaks Critical Invariant 9 (correlation_id continuity from Producer to
+Fulfillment).
+
+**Why.** Phase 13 local end-to-end smoke surfaced a three-correlation-id
+trail across one event:
+
+```
+created → attempted (consumer):   d8ea5762  ← fresh, not from MessageAttributes
+attempted → paid    (consumer):   d8ea5762  ← carried via contextvar
+paid → fulfilled    (fulfillment): 710f1055 ← fresh again
+```
+
+Producer set the MessageAttribute correctly. The pump
+(`scripts/local-pump.py`) flattens attributes before invoking
+`process_record` to make the call site ergonomic, which is the standard
+boto3 pattern. The consumer's `_bind_correlation_id` had
+`if isinstance(attr, dict)` as the only extraction path, so the flat
+string `"uuid"` slipped past the parse, `cid_from_attr` stayed None, and
+`new_correlation_id()` minted a fresh value. The consumer then propagated
+that fresh value to `fulfillment-queue.fifo`, where the fulfillment
+processor repeated the same trick. Two unrelated CloudWatch traces for
+one Razorpay event.
+
+**How to apply.** Pattern-match both shapes:
+
+```python
+attr = attrs.get("correlation_id")
+cid_from_attr: str | None = None
+if isinstance(attr, dict):
+    cid_from_attr = attr.get("stringValue") or attr.get("StringValue")
+elif isinstance(attr, str) and attr:
+    cid_from_attr = attr
+cid = cid_from_attr or get_correlation_id() or new_correlation_id()
+```
+
+The defensive form costs three lines and survives any future change in
+how the call site shapes its MessageAttributes argument. Production
+Lambda mapping currently uses the dict shape; local pumps and any
+boto3-helper-based wrapper use the flat shape. Tests should cover both
+explicitly so a regression in either branch can't slip in.
+
 ### 17.10 Stray shell exports silently override `.env` in pydantic-settings (Phase 12)
 
 **Rule.** When `RazorpayConfig()` appears to load wrong values, the first

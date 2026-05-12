@@ -226,8 +226,20 @@ class WebhookConsumer:
         message_attributes: dict[str, Any] | None,
         envelope: dict[str, Any],  # noqa: ARG002 - reserved for future use
     ) -> str:
+        """Re-bind correlation_id from SQS MessageAttributes (Critical Invariant 9).
+
+        Accepts both shapes:
+          - Raw SQS dict shape (Lambda event-source mapping):
+            ``{"correlation_id": {"StringValue": "uuid", "DataType": "String"}}``
+          - Flattened shape (custom pumps / boto3 helpers):
+            ``{"correlation_id": "uuid"}``
+
+        Falling through both yields the contextvar's value (set by an outer
+        scope) or a fresh UUID. The fresh-UUID fall-through must never silently
+        replace an inbound correlation_id; that breaks end-to-end tracing.
+        """
         attrs = message_attributes or {}
-        attr = attrs.get("correlation_id") or {}
+        attr = attrs.get("correlation_id")
         cid_from_attr: str | None = None
         if isinstance(attr, dict):
             cid_from_attr = (
@@ -235,6 +247,8 @@ class WebhookConsumer:
                 or attr.get("StringValue")
                 or attr.get("string_value")
             )
+        elif isinstance(attr, str) and attr:
+            cid_from_attr = attr
         cid = cid_from_attr or get_correlation_id() or new_correlation_id()
         set_correlation_id(cid)
         return cid

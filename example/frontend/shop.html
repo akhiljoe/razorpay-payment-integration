@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Acme Widget Co · Checkout</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #3399cc;
+    --accent-hover: #2782b0;
+    --good: #16a34a;
+    --bad: #dc2626;
+    --warn: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .stage { width: 100%; max-width: 480px; }
+  .brand {
+    text-align: center;
+    margin-bottom: 24px;
+    color: var(--muted);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .product-image {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: linear-gradient(135deg, #6a8caf 0%, #3399cc 50%, #2782b0 100%);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 48px;
+    font-weight: 300;
+    letter-spacing: 0.1em;
+  }
+  .product-title { font-size: 20px; font-weight: 600; margin: 0 0 6px 0; }
+  .product-sub { color: var(--muted); font-size: 14px; margin: 0 0 16px 0; }
+  .price-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .price-label { color: var(--muted); font-size: 14px; }
+  .price-value { font-size: 28px; font-weight: 600; }
+  .price-value .currency { font-size: 16px; color: var(--muted); margin-right: 4px; }
+  .pay-button {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .pay-button:hover { background: var(--accent-hover); }
+  .pay-button:disabled { background: #aaa; cursor: not-allowed; }
+  .pay-button.danger { background: var(--bad); }
+  .secure-row {
+    margin-top: 12px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .test-hint {
+    margin-top: 20px;
+    padding: 12px 14px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    color: #92400e;
+    font-size: 13px;
+  }
+  .test-hint code { background: #ffedd5; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* Stage: confirming */
+  .stage-confirming { text-align: center; padding: 40px 28px; }
+  .spinner {
+    width: 56px; height: 56px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Stage: success */
+  .stage-success { text-align: center; padding: 40px 28px; }
+  .checkmark {
+    width: 64px; height: 64px;
+    background: var(--good);
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 36px;
+  }
+  .stage-failure { text-align: center; padding: 40px 28px; }
+  .xmark {
+    width: 64px; height: 64px;
+    background: var(--bad);
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 36px;
+  }
+  .result-title { font-size: 22px; font-weight: 600; margin: 0 0 8px 0; }
+  .result-sub { color: var(--muted); font-size: 14px; margin: 0 0 24px 0; }
+
+  .order-summary {
+    background: #f9fafb;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 16px 0 24px 0;
+    text-align: left;
+    font-size: 13px;
+  }
+  .order-summary dt { color: var(--muted); font-weight: 400; }
+  .order-summary dd { margin: 0 0 8px 0; font-family: SFMono-Regular, Consolas, monospace; word-break: break-all; }
+  .order-summary dd:last-child { margin-bottom: 0; }
+
+  .timeline {
+    list-style: none; padding: 0; margin: 16px 0 0;
+    text-align: left; font-size: 13px;
+  }
+  .timeline li {
+    padding: 6px 0 6px 24px;
+    position: relative;
+    color: var(--muted);
+  }
+  .timeline li::before {
+    content: "○";
+    position: absolute;
+    left: 4px;
+    color: var(--border);
+  }
+  .timeline li.done {
+    color: var(--text);
+  }
+  .timeline li.done::before {
+    content: "●";
+    color: var(--good);
+  }
+  .timeline li.active::before {
+    content: "◐";
+    color: var(--accent);
+    animation: spin 1.4s linear infinite;
+  }
+
+  button.link {
+    background: none; border: 0; color: var(--accent);
+    cursor: pointer; font-size: 14px; padding: 8px 12px;
+  }
+  button.link:hover { text-decoration: underline; }
+
+  .hidden { display: none !important; }
+</style>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+<div class="stage">
+  <div class="brand">Acme Widget Co</div>
+
+  <!-- STAGE 1: product / pay -->
+  <div id="stage-product" class="card">
+    <div class="product-image">∞</div>
+    <h1 class="product-title">Premium Membership</h1>
+    <p class="product-sub">Lifetime access. One-time payment.</p>
+    <div class="price-row">
+      <span class="price-label">Total</span>
+      <span class="price-value"><span class="currency">₹</span><span id="amount-display">500.00</span></span>
+    </div>
+    <button id="btn-pay" class="pay-button">Pay Now</button>
+    <div class="secure-row">🔒 Secured by Razorpay</div>
+
+    <div class="test-hint">
+      <strong>Test mode.</strong> Easiest path: pick <strong>UPI</strong> in
+      the modal, enter <code>success@razorpay</code>, click Success.
+      <br/>Card path (India-only test accounts):
+      <code>5267 3181 8797 5449</code>, any future expiry,
+      any 3-digit CVV, OTP <code>123456</code>.
+      Or click <strong>Success</strong> on the Razorpay simulator screen.
+    </div>
+  </div>
+
+  <!-- STAGE 2: confirming payment -->
+  <div id="stage-confirming" class="card stage-confirming hidden">
+    <div class="spinner"></div>
+    <h2 class="result-title">Confirming your payment</h2>
+    <p class="result-sub" id="confirming-sub">Razorpay has accepted your payment. Waiting for our servers to fulfill the order.</p>
+    <ul class="timeline" id="timeline">
+      <li id="t-paid" class="active">Payment received from Razorpay</li>
+      <li id="t-webhook">Webhook delivered to our server</li>
+      <li id="t-consumer">Order marked as paid in our database</li>
+      <li id="t-fulfilled">Order fulfilled</li>
+    </ul>
+  </div>
+
+  <!-- STAGE 3: success -->
+  <div id="stage-success" class="card stage-success hidden">
+    <div class="checkmark">✓</div>
+    <h2 class="result-title">Payment successful</h2>
+    <p class="result-sub">Your order is confirmed and fulfilled.</p>
+    <dl class="order-summary">
+      <dt>Order ID</dt><dd id="success-order">-</dd>
+      <dt>Razorpay payment ID</dt><dd id="success-payment">-</dd>
+      <dt>Amount</dt><dd id="success-amount">-</dd>
+    </dl>
+    <button class="pay-button" id="btn-buy-again">Buy another</button>
+    <button class="link" id="btn-view-dashboard">View dev dashboard</button>
+  </div>
+
+  <!-- STAGE 4: failure -->
+  <div id="stage-failure" class="card stage-failure hidden">
+    <div class="xmark">✕</div>
+    <h2 class="result-title" id="failure-title">Payment failed</h2>
+    <p class="result-sub" id="failure-sub">Something went wrong. No charge was made.</p>
+    <dl class="order-summary" id="failure-summary"></dl>
+    <button class="pay-button" id="btn-retry">Try again</button>
+    <button class="link" id="btn-view-dashboard-2">View dev dashboard</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id) => {
+  ["stage-product","stage-confirming","stage-success","stage-failure"]
+    .forEach(s => $(s).classList.toggle("hidden", s !== id));
+};
+
+let currentOrder = null;
+let currentPaymentId = null;
+
+async function startCheckout() {
+  $("btn-pay").disabled = true;
+  $("btn-pay").textContent = "Creating order…";
+  try {
+    const r = await fetch("/payments/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ receipt: "shop-" + Math.random().toString(36).slice(2,10) }),
+    });
+    if (!r.ok) throw new Error("create order failed: " + r.status);
+    currentOrder = await r.json();
+  } catch (e) {
+    $("btn-pay").disabled = false;
+    $("btn-pay").textContent = "Pay Now";
+    showFailure("Could not start payment", e.message);
+    return;
+  }
+
+  // Open the real Razorpay checkout modal.
+  const rzp = new Razorpay({
+    key: currentOrder.key_id,
+    amount: currentOrder.amount,
+    currency: currentOrder.currency,
+    order_id: currentOrder.razorpay_order_id,
+    name: "Acme Widget Co",
+    description: "Premium Membership",
+    image: "",
+    theme: { color: "#3399cc" },
+    handler: function(response) {
+      // Razorpay says payment succeeded on its side. Hand off to our server
+      // for signature verification and fulfillment.
+      currentPaymentId = response.razorpay_payment_id;
+      onRazorpaySuccess(response);
+    },
+    modal: {
+      ondismiss: function() {
+        $("btn-pay").disabled = false;
+        $("btn-pay").textContent = "Pay Now";
+      },
+    },
+  });
+  rzp.on("payment.failed", function(resp) {
+    onRazorpayFailure(resp.error || {});
+  });
+  rzp.open();
+}
+
+async function onRazorpaySuccess(rzpResp) {
+  show("stage-confirming");
+  markTimeline("t-paid", "done");
+  markTimeline("t-webhook", "active");
+
+  // Verify signature server-side. This transitions created -> attempted on
+  // the server. The consumer's auto-hop also covers this path.
+  try {
+    await fetch("/payments/verify-callback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        razorpay_order_id: rzpResp.razorpay_order_id,
+        razorpay_payment_id: rzpResp.razorpay_payment_id,
+        razorpay_signature: rzpResp.razorpay_signature,
+      }),
+    });
+  } catch (e) { /* non-fatal; webhook is the source of truth */ }
+
+  // LOCAL DEV ONLY: Razorpay cannot deliver webhooks to localhost. In
+  // production a real `payment.captured` webhook would arrive automatically
+  // from Razorpay servers. Here, simulate it ourselves so the consumer
+  // pump has something to process. POST is signed server-side using the
+  // tenant's webhook_secret. Safe because /dev/simulate refuses to run
+  // against any non-localhost endpoint.
+  try {
+    await fetch("/dev/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event_type: "payment.captured",
+        razorpay_order_id: rzpResp.razorpay_order_id,
+        razorpay_payment_id: rzpResp.razorpay_payment_id,
+        amount: currentOrder.amount,
+      }),
+    });
+  } catch (e) {
+    showFailure("Could not simulate webhook", e.message);
+    return;
+  }
+
+  // Poll our backend until the webhook lands and fulfillment completes.
+  pollUntilFulfilled(currentOrder.order_id);
+}
+
+function onRazorpayFailure(err) {
+  showFailure(err.description || "Payment failed", err.reason || err.code || "Unknown error");
+}
+
+function showFailure(title, sub, fields={}) {
+  $("failure-title").textContent = title;
+  $("failure-sub").textContent = sub || "";
+  const dl = $("failure-summary");
+  dl.innerHTML = "";
+  Object.entries(fields).forEach(([k,v]) => {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    dl.appendChild(dt); dl.appendChild(dd);
+  });
+  show("stage-failure");
+}
+
+function markTimeline(id, state) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove("active","done");
+  if (state) el.classList.add(state);
+}
+
+async function pollUntilFulfilled(orderId) {
+  const deadline = Date.now() + 60_000;
+  let webhookSeen = false;
+  let paidSeen = false;
+
+  while (Date.now() < deadline) {
+    let data;
+    try {
+      const r = await fetch("/payments/orders/" + orderId);
+      if (!r.ok) throw new Error(r.status);
+      data = await r.json();
+    } catch (e) {
+      await sleep(1500);
+      continue;
+    }
+
+    if (!webhookSeen && (data.attempted_at || data.paid_at || data.authorized_at)) {
+      webhookSeen = true;
+      markTimeline("t-webhook", "done");
+      markTimeline("t-consumer", "active");
+    }
+    if (!paidSeen && data.paid_at) {
+      paidSeen = true;
+      markTimeline("t-consumer", "done");
+      markTimeline("t-fulfilled", "active");
+    }
+    if (data.status === "fulfilled") {
+      markTimeline("t-fulfilled", "done");
+      $("success-order").textContent = orderId;
+      $("success-payment").textContent = currentPaymentId || "-";
+      $("success-amount").textContent = "₹" + (currentOrder.amount / 100).toFixed(2);
+      await sleep(500);
+      show("stage-success");
+      return;
+    }
+    if (data.status === "failed" || data.status === "fulfillment_failed") {
+      showFailure(
+        data.status === "fulfillment_failed" ? "Fulfillment failed" : "Payment failed",
+        "The payment was received but the order could not be fulfilled.",
+        { "Order ID": orderId, "Status": data.status }
+      );
+      return;
+    }
+    await sleep(1500);
+  }
+
+  showFailure("Timed out", "We did not see a fulfilled order within 60s. Make sure the local pump is running (scripts/local-pump.py).",
+    { "Order ID": orderId });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+$("btn-pay").addEventListener("click", startCheckout);
+$("btn-buy-again").addEventListener("click", () => {
+  currentOrder = null;
+  currentPaymentId = null;
+  markTimeline("t-paid", "active");
+  ["t-webhook","t-consumer","t-fulfilled"].forEach(id => markTimeline(id, null));
+  $("btn-pay").disabled = false;
+  $("btn-pay").textContent = "Pay Now";
+  show("stage-product");
+});
+$("btn-retry").addEventListener("click", () => {
+  $("btn-pay").disabled = false;
+  $("btn-pay").textContent = "Pay Now";
+  show("stage-product");
+});
+$("btn-view-dashboard").addEventListener("click", () => window.location.href = "/dev/dashboard");
+$("btn-view-dashboard-2").addEventListener("click", () => window.location.href = "/dev/dashboard");
+</script>
+</body>
+</html>

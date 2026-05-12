@@ -248,8 +248,15 @@ class FulfillmentProcessor:
     def _bind_correlation_id(
         self, message_attributes: dict[str, Any] | None
     ) -> str:
+        """Re-bind correlation_id from SQS MessageAttributes (Critical Invariant 9).
+
+        Mirrors `WebhookConsumer._bind_correlation_id`. Accepts both the raw
+        SQS dict shape (``{"StringValue": "uuid"}``) used by Lambda's
+        event-source mapping AND the flattened string shape used by custom
+        pumps and most boto3 helpers.
+        """
         attrs = message_attributes or {}
-        attr = attrs.get("correlation_id") or {}
+        attr = attrs.get("correlation_id")
         cid_from_attr: str | None = None
         if isinstance(attr, dict):
             cid_from_attr = (
@@ -257,6 +264,8 @@ class FulfillmentProcessor:
                 or attr.get("StringValue")
                 or attr.get("string_value")
             )
+        elif isinstance(attr, str) and attr:
+            cid_from_attr = attr
         cid = cid_from_attr or get_correlation_id() or new_correlation_id()
         set_correlation_id(cid)
         return cid

@@ -40,12 +40,30 @@ _log = get_logger("razorpay_checkout.webhook_handlers")
 
 
 async def handle_payment_authorized(ctx: HandlerContext) -> _HandlerOutcome:
-    """attempted -> authorized.
+    """attempted -> authorized, with auto-hop from `created` when the widget
+    skipped the verify-callback round trip.
 
     DESIGN_v5 Section 2.1 + 5.3. No payments row. No SQS publish. Amount
-    already asserted by the orchestrator.
+    already asserted by the orchestrator. The auto-hop preserves the strict
+    external state machine: every order still visits `attempted`, but the
+    consumer inserts it on the host's behalf when the widget's success
+    callback never fires (server-to-server flows, refund-only integrations,
+    or any host that doesn't call POST /payments/verify-callback). The
+    `auto_attempted` metadata flag distinguishes implicit hops from real
+    user-driven ones at forensic time.
     """
     from razorpay_checkout.webhook_consumer import _HandlerOutcome  # noqa: PLC0415
+
+    if ctx.order_status is OrderStatus.CREATED:
+        await ctx.service.transition(
+            ctx.conn,
+            order_id=ctx.order_id,
+            tenant_id=ctx.tenant_id,
+            new_status=OrderStatus.ATTEMPTED,
+            trigger="webhook",
+            webhook_event_id=ctx.webhook_event_id,
+            metadata={"event": "payment.authorized", "auto_attempted": True},
+        )
 
     await ctx.service.transition(
         ctx.conn,
@@ -81,8 +99,16 @@ async def handle_payment_captured(ctx: HandlerContext) -> _HandlerOutcome:
     method = payment.get("method")
     razorpay_signature = payment.get("razorpay_signature")
 
-    # Failed -> attempted recovery edge.
-    if ctx.order_status is OrderStatus.FAILED:
+    # Two auto-hop edges into `attempted`:
+    #   FAILED -> ATTEMPTED  (recovery; Razorpay re-tried a previously failed
+    #                        payment and succeeded)
+    #   CREATED -> ATTEMPTED (server-to-server or verify-callback-less flow;
+    #                        the widget's success callback never ran, so the
+    #                        consumer inserts the missing hop on behalf of
+    #                        the host)
+    # Both keep the external state machine strict while letting production
+    # webhooks land cleanly.
+    if ctx.order_status in (OrderStatus.FAILED, OrderStatus.CREATED):
         await ctx.service.transition(
             ctx.conn,
             order_id=ctx.order_id,
@@ -90,7 +116,11 @@ async def handle_payment_captured(ctx: HandlerContext) -> _HandlerOutcome:
             new_status=OrderStatus.ATTEMPTED,
             trigger="webhook",
             webhook_event_id=ctx.webhook_event_id,
-            metadata={"event": "payment.captured", "recovery": True},
+            metadata={
+                "event": "payment.captured",
+                "recovery": ctx.order_status is OrderStatus.FAILED,
+                "auto_attempted": ctx.order_status is OrderStatus.CREATED,
+            },
         )
         from_for_paid = OrderStatus.ATTEMPTED
     else:

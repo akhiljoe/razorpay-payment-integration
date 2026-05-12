@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Razorpay Flow Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a21;
+    --panel-2: #1c222b;
+    --border: #2a313c;
+    --text: #d8dee9;
+    --muted: #8a93a1;
+    --accent: #6aa1ff;
+    --good: #4ec07a;
+    --warn: #ffb74d;
+    --bad: #f06c6c;
+    --idle: #4b5363;
+    --code: #c5d3e0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  h1, h2, h3 { margin: 0 0 8px 0; font-weight: 600; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 16px;
+    padding: 16px;
+    min-height: 100vh;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .panel + .panel { margin-top: 12px; }
+  button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: var(--bad); border-color: #4a2a2a; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .small { font-size: 12px; color: var(--muted); }
+  code, .mono { font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace; color: var(--code); }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .pill.initializing { background: #2a3340; color: #8a93a1; }
+  .pill.created      { background: #2a3340; color: #c5d3e0; }
+  .pill.attempted    { background: #3a3220; color: var(--warn); }
+  .pill.authorized   { background: #2c3a3a; color: #6cd3d3; }
+  .pill.paid         { background: #233c2a; color: var(--good); }
+  .pill.fulfilled    { background: #1f4a30; color: #6ce097; }
+  .pill.failed       { background: #4a2424; color: var(--bad); }
+  .pill.fulfillment_failed { background: #4a2424; color: var(--bad); }
+  .pill.refunded     { background: #2c2a3a; color: #c5b0ff; }
+  .badge {
+    display: inline-block; min-width: 16px; padding: 0 6px; border-radius: 999px;
+    font-size: 12px; background: var(--panel-2); color: var(--muted);
+    text-align: center;
+  }
+  .badge.warn { background: #3a3220; color: var(--warn); }
+  .badge.good { background: #233c2a; color: var(--good); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.mono { word-break: break-all; white-space: pre-wrap; }
+  td.metadata { word-break: break-all; white-space: pre-wrap; max-width: none; font-size: 11px; color: var(--code); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+
+  /* state machine row */
+  .sm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .sm .node {
+    padding: 4px 10px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+  }
+  .sm .node.active { color: #fff; border-color: var(--accent); background: #1e2a44; }
+  .sm .node.past   { color: var(--good); border-color: #1f4a30; background: #16291f; }
+  .sm .arrow { color: var(--muted); font-size: 12px; }
+
+  .grid-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .stat {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px;
+  }
+  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 18px; margin-top: 2px; }
+  .stat .sub { font-size: 11px; color: var(--muted); }
+
+  textarea { width: 100%; background: #0a0c10; color: var(--code); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px; font-family: SFMono-Regular, Consolas, monospace; font-size: 12px;
+    resize: vertical; min-height: 100px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; }
+  .blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.5; } }
+
+  /* Payment Journey panel — vertical timeline */
+  .journey { display: flex; flex-direction: column; gap: 0; }
+  .lane {
+    margin: 6px 0 4px;
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding-left: 4px;
+  }
+  .lane:first-child { margin-top: 0; }
+  .step {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 8px 6px;
+    border-left: 2px solid var(--border);
+    margin-left: 13px;
+    position: relative;
+  }
+  .step .dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--panel-2);
+    border: 2px solid var(--border);
+    color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600;
+    margin-left: -25px;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .step.pending .dot { background: var(--panel-2); color: var(--idle); border-color: var(--border); }
+  .step.active  .dot { background: #1e2a44; color: var(--accent); border-color: var(--accent); animation: pulse 1.4s infinite; }
+  .step.done    .dot { background: #16291f; color: var(--good); border-color: var(--good); }
+  .step.skipped .dot { background: var(--panel-2); color: var(--idle); border-color: var(--idle); }
+  .step.failed  .dot { background: #2a1414; color: var(--bad); border-color: var(--bad); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(106,161,255,0.15); } }
+
+  .step .body { min-width: 0; }
+  .step .title { font-weight: 600; font-size: 13px; }
+  .step .desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .step.skipped .title { color: var(--idle); text-decoration: line-through; }
+  .step.skipped .desc  { color: var(--idle); }
+
+  .step .evidence {
+    margin-top: 4px;
+    font-family: SFMono-Regular, Consolas, monospace;
+    font-size: 10px; color: var(--code);
+    word-break: break-all;
+  }
+  .step .ts {
+    font-size: 10px; color: var(--muted);
+    font-family: SFMono-Regular, Consolas, monospace;
+    white-space: nowrap;
+    align-self: start; padding-top: 2px;
+  }
+
+  .journey-summary {
+    display: flex; gap: 10px; font-size: 12px; color: var(--muted);
+    padding: 8px 6px 4px;
+    flex-wrap: wrap;
+  }
+  .journey-summary .chip {
+    padding: 3px 8px; border-radius: 999px; background: var(--panel-2);
+    border: 1px solid var(--border); color: var(--text);
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- LEFT: controls -->
+  <div>
+    <div class="panel">
+      <h1>Razorpay Flow Dashboard</h1>
+      <div class="small">Dev backend at <code>localhost:8000</code> / tenant
+        <code id="tenant-id">…</code></div>
+      <hr/>
+      <div class="stack">
+        <button id="btn-create" class="primary">1. Create order</button>
+        <button id="btn-authorized">2a. Fire payment.authorized</button>
+        <button id="btn-captured">2b. Fire payment.captured</button>
+        <button id="btn-failed">2c. Fire payment.failed</button>
+        <button id="btn-refund">3. Fire refund.processed</button>
+        <button id="btn-orderpaid">misc: order.paid</button>
+        <hr/>
+        <button id="btn-reset" class="danger">Reset (purge DB + queues)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Recent orders</h2>
+      <div id="recent-orders" class="small">loading…</div>
+    </div>
+
+    <div class="panel">
+      <h2>SQS queue depths</h2>
+      <div id="queues" class="small">loading…</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: live state -->
+  <div>
+    <div class="panel">
+      <h2>Order</h2>
+      <div id="order-card">No order selected. Click <strong>Create order</strong>.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Payment Journey</h2>
+      <div class="journey-summary" id="journey-summary"></div>
+      <div class="journey" id="journey"></div>
+    </div>
+
+    <div class="panel">
+      <h2>State machine</h2>
+      <div id="state-machine" class="sm">
+        <span class="node" data-s="initializing">initializing</span>
+        <span class="arrow">→</span>
+        <span class="node" data-s="created">created</span>
+        <span class="arrow">→</span>
+        <span class="node" data-s="attempted">attempted</span>
+        <span class="arrow">→</span>
+        <span class="node" data-s="authorized">authorized</span>
+        <span class="arrow">→</span>
+        <span class="node" data-s="paid">paid</span>
+        <span class="arrow">→</span>
+        <span class="node" data-s="fulfilled">fulfilled</span>
+        <span class="arrow">|</span>
+        <span class="node" data-s="failed">failed</span>
+        <span class="node" data-s="fulfillment_failed">fulfillment_failed</span>
+        <span class="node" data-s="refunded">refunded</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>order_events (DB)</h2>
+      <table id="order-events"><thead>
+        <tr><th>at</th><th>from</th><th>to</th><th>trigger</th><th>metadata</th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>webhook_events (DB)</h2>
+      <table id="webhook-events"><thead>
+        <tr><th>received_at</th><th>event</th><th>status</th><th>event_id</th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>payments / refunds</h2>
+      <div id="payments-block"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Activity log</h2>
+      <textarea id="log" readonly style="min-height: 140px;"></textarea>
+    </div>
+
+    <div class="panel">
+      <h2>Snapshot</h2>
+      <div class="small">Click <strong>Copy snapshot</strong> to put a full
+        text dump of the order + events + payments + queues on your clipboard.
+        Paste it into chat as one block.</div>
+      <div style="margin: 8px 0;">
+        <button id="btn-snapshot" class="primary">Copy snapshot</button>
+        <span id="snapshot-feedback" class="small" style="margin-left: 8px;"></span>
+      </div>
+      <textarea id="snapshot" readonly style="min-height: 200px; font-size: 11px;"></textarea>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+function log(msg) {
+  const ts = new Date().toISOString().split("T")[1].split(".")[0];
+  logEl.value = `[${ts}] ${msg}\n` + logEl.value;
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("application/json") ? await r.json() : await r.text();
+  if (!r.ok) throw Object.assign(new Error(`${path} ${r.status}`), { status: r.status, body });
+  return body;
+}
+
+let currentOrderId = null;
+let currentRzpOrderId = null;
+let currentPaymentId = null;
+
+// ------- buttons -------
+
+$("btn-create").addEventListener("click", async () => {
+  try {
+    const receipt = "dash-" + Math.random().toString(36).slice(2, 8);
+    const r = await api("/payments/orders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ receipt }),
+    });
+    currentOrderId = r.order_id;
+    currentRzpOrderId = r.razorpay_order_id;
+    currentPaymentId = "pay_" + Math.random().toString(36).slice(2, 16);
+    log(`order created order_id=${r.order_id} razorpay=${r.razorpay_order_id} payment_id=${currentPaymentId}`);
+    refresh();
+  } catch (e) { log("ERR create: " + e.message); }
+});
+
+async function fireEvent(eventType, opts={}) {
+  if (!currentRzpOrderId) { log("no order. click Create order first."); return; }
+  const body = {
+    event_type: eventType,
+    razorpay_order_id: currentRzpOrderId,
+    razorpay_payment_id: currentPaymentId,
+    amount: opts.amount ?? 50000,
+  };
+  try {
+    const r = await api("/dev/simulate", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    log(`fired ${eventType} status=${r.status_code} event_id=${r.event_id}`);
+  } catch (e) { log("ERR fire " + eventType + ": " + e.message); }
+}
+
+$("btn-authorized").addEventListener("click", () => fireEvent("payment.authorized"));
+$("btn-captured").addEventListener("click", () => fireEvent("payment.captured"));
+$("btn-failed").addEventListener("click", () => fireEvent("payment.failed"));
+$("btn-refund").addEventListener("click", () => fireEvent("refund.processed"));
+$("btn-orderpaid").addEventListener("click", () => fireEvent("order.paid"));
+
+$("btn-reset").addEventListener("click", async () => {
+  if (!confirm("Wipe orders/payments/refunds/webhook_events/order_events and purge SQS?")) return;
+  try {
+    const r = await api("/dev/reset", { method: "POST" });
+    currentOrderId = null;
+    currentRzpOrderId = null;
+    currentPaymentId = null;
+    log("reset. queues_purged=" + JSON.stringify(r.queues_purged));
+    refresh();
+  } catch (e) { log("ERR reset: " + e.message); }
+});
+
+// ------- pollers -------
+
+async function refresh() {
+  await Promise.all([refreshRecent(), refreshQueues(), refreshFlow()]);
+}
+
+async function refreshRecent() {
+  try {
+    const r = await api("/dev/flow");
+    const div = $("recent-orders");
+    if (!r.orders.length) { div.innerHTML = "<em class='small'>none</em>"; return; }
+    div.innerHTML = r.orders.map(o => `
+      <div style="margin: 4px 0;">
+        <span class="pill ${o.status}">${o.status}</span>
+        <a href="#" data-id="${o.id}" class="orderlink mono">${o.razorpay_order_id || o.id.slice(0,8)}</a>
+        <span class="small">${o.receipt || ""}</span>
+      </div>
+    `).join("");
+    div.querySelectorAll(".orderlink").forEach(a => a.addEventListener("click", (e) => {
+      e.preventDefault();
+      currentOrderId = a.getAttribute("data-id");
+      // best-effort: surface rzp_order_id from this list row
+      const o = r.orders.find(x => x.id === currentOrderId);
+      currentRzpOrderId = o ? o.razorpay_order_id : null;
+      log("selected order " + currentOrderId);
+      refreshFlow();
+    }));
+  } catch (e) { /* swallow */ }
+}
+
+async function refreshQueues() {
+  try {
+    const r = await api("/dev/queues");
+    const html = `<div class="grid-stats">${
+      Object.entries(r.queues).map(([name, q]) => {
+        const v = q.visible ?? 0;
+        const i = q.inflight ?? 0;
+        const cls = (v + i) > 0 ? "warn" : "";
+        const isDlq = name.includes("dlq");
+        const labelCls = isDlq ? "bad" : "";
+        return `
+          <div class="stat">
+            <div class="label" style="${isDlq ? 'color: var(--bad)' : ''}">${name}</div>
+            <div class="value">${v}<span class="sub"> visible</span></div>
+            <div class="sub">${i} inflight</div>
+          </div>`;
+      }).join("")
+    }</div>`;
+    $("queues").innerHTML = html;
+  } catch (e) { /* swallow */ }
+}
+
+async function refreshFlow() {
+  if (!currentOrderId) {
+    $("order-card").innerHTML = "No order selected. Click <strong>Create order</strong>.";
+    setStateMachine(null);
+    fillTable("order-events", []);
+    fillTable("webhook-events", []);
+    $("payments-block").innerHTML = "";
+    renderJourney(null);
+    return;
+  }
+  try {
+    const r = await api("/dev/flow/" + currentOrderId);
+    const o = r.order;
+    currentRzpOrderId = o.razorpay_order_id || currentRzpOrderId;
+    $("order-card").innerHTML = `
+      <div><span class="pill ${o.status}">${o.status}</span>
+        <span class="mono">${o.razorpay_order_id || o.id}</span></div>
+      <div class="small" style="margin-top: 6px;">
+        amount: ₹${(o.amount/100).toFixed(2)} · receipt: ${o.receipt} · correlation: ${o.correlation_id || "—"}
+      </div>
+      <div class="small">
+        created: ${o.created_at || "—"} ·
+        attempted: ${o.attempted_at || "—"} ·
+        authorized: ${o.authorized_at || "—"} ·
+        paid: ${o.paid_at || "—"} ·
+        fulfilled: ${o.fulfilled_at || "—"} ·
+        failed: ${o.failed_at || "—"} ·
+        refunded: ${o.refunded_at || "—"}
+      </div>
+    `;
+    setStateMachine(o.status);
+    fillTable("order-events", r.order_events.map(e => [
+      e.created_at, e.from_status || "—", e.to_status, e.trigger,
+      JSON.stringify(e.metadata || {}, null, 2),
+    ]));
+    fillTable("webhook-events", r.webhook_events.map(e => [
+      e.received_at, e.event,
+      `<span class="pill ${e.processing_status === 'done' ? 'paid' : e.processing_status === 'failed' ? 'failed' : 'created'}">${e.processing_status}</span>`,
+      e.event_id,
+    ]));
+    $("payments-block").innerHTML = `
+      <div class="small">payments: ${r.payments.length}, refunds: ${r.refunds.length}</div>
+      ${r.payments.map(p => `<div class="mono small">${p.razorpay_payment_id} · ${p.status} · ₹${(p.amount/100).toFixed(2)} · authoritative=${p.is_authoritative}</div>`).join("")}
+      ${r.refunds.map(p => `<div class="mono small">refund ${p.razorpay_refund_id} · ${p.status} · ₹${(p.amount/100).toFixed(2)}</div>`).join("")}
+    `;
+    renderJourney(r);
+  } catch (e) { /* swallow */ }
+}
+
+// ------- Payment Journey -------
+//
+// Synthesizes a 17-step end-to-end timeline from the flow data we already
+// poll. Each step has a status derived from order/order_events/webhook_events:
+//   pending  — not yet observed
+//   active   — the next-up step (one step ahead of last observed evidence)
+//   done     — proven by DB evidence (timestamp / row)
+//   skipped  — design-time bypass (e.g. authorized hop when UPI captured direct)
+//   failed   — order in failed/fulfillment_failed/refunded
+//
+// Evidence shown inline: timestamps, event_ids, payment_ids, queue depths.
+
+function shortTs(iso) {
+  if (!iso) return "";
+  const t = String(iso).split("T")[1] || "";
+  return t.slice(0, 12);
+}
+
+function findEvent(events, to_status, opts) {
+  opts = opts || {};
+  return events.find(e =>
+    e.to_status === to_status &&
+    (opts.trigger ? e.trigger === opts.trigger : true) &&
+    (opts.auto_attempted ? (e.metadata && e.metadata.auto_attempted) : true)
+  );
+}
+
+function buildJourneySteps(flow) {
+  const o = flow.order || {};
+  const events = flow.order_events || [];
+  const webhooks = flow.webhook_events || [];
+  const payments = flow.payments || [];
+  const refunds = flow.refunds || [];
+
+  const evInit = findEvent(events, "created");                            // initializing -> created
+  const evAttempt = findEvent(events, "attempted");                       // -> attempted
+  const evAuthorize = findEvent(events, "authorized");                    // -> authorized
+  const evPaid = findEvent(events, "paid");                               // -> paid
+  const evFulfill = findEvent(events, "fulfilled");                       // -> fulfilled
+  const evRefund = findEvent(events, "refunded");                         // -> refunded
+  const evFail = findEvent(events, "failed");
+  const evFulfillFail = findEvent(events, "fulfillment_failed");
+
+  const lastWebhook = webhooks.slice().sort((a,b) => (b.received_at || "").localeCompare(a.received_at || ""))[0];
+  const capturedWebhook = webhooks.find(w => w.event === "payment.captured");
+  const authorizedWebhook = webhooks.find(w => w.event === "payment.authorized");
+  const refundWebhook = webhooks.find(w => w.event === "refund.processed");
+
+  const isFulfilled = o.status === "fulfilled";
+  const isFailedTerminal = ["failed","fulfillment_failed","refunded"].includes(o.status);
+  const capPayment = payments.find(p => p.is_authoritative);
+
+  const steps = [];
+
+  // ---- BROWSER / FRONTEND ----
+  steps.push({ lane: "Browser — checkout begins" });
+
+  steps.push({
+    title: "Customer clicked Pay",
+    desc: "Frontend POSTs to /payments/orders.",
+    done: !!o.id,
+    evidence: o.id ? `order_id=${o.id}` : "",
+    ts: o.created_at ? shortTs(o.created_at) : "",
+  });
+
+  // ---- SERVER: order creation ----
+  steps.push({ lane: "Server — order pre-creation" });
+
+  steps.push({
+    title: "Order row inserted (initializing)",
+    desc: "Local DB row created before any Razorpay call. Critical invariant: DB before Razorpay.",
+    done: !!evInit,
+    evidence: evInit ? `from=${evInit.from_status} → to=${evInit.to_status} trigger=${evInit.trigger}` : "",
+    ts: evInit ? shortTs(evInit.created_at) : "",
+  });
+
+  steps.push({
+    title: "POST api.razorpay.com/v1/orders",
+    desc: "Server calls Razorpay over HTTPS with the project's key_id/secret. Returns razorpay_order_id.",
+    done: !!o.razorpay_order_id,
+    evidence: o.razorpay_order_id ? `razorpay_order_id=${o.razorpay_order_id}` : "",
+  });
+
+  steps.push({
+    title: "Order transitioned to 'created'",
+    desc: "DB updated with razorpay_order_id. Frontend now has everything needed to open the modal.",
+    done: o.status !== "initializing" && o.status,
+    evidence: `status=${o.status}`,
+  });
+
+  // ---- RAZORPAY MODAL ----
+  steps.push({ lane: "Razorpay — customer pays" });
+
+  steps.push({
+    title: "Razorpay checkout modal opens",
+    desc: "checkout.js loads on the storefront page. Customer enters UPI / card.",
+    done: !!o.razorpay_order_id,  // we don't observe modal open directly; treat as done once we have a rzp order id
+    evidence: "",
+  });
+
+  steps.push({
+    title: "Customer authorizes payment",
+    desc: "Razorpay processes UPI / card / netbanking. On success, modal returns razorpay_payment_id and a signature.",
+    done: !!(capPayment || capturedWebhook || authorizedWebhook || evAttempt),
+    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "",
+  });
+
+  // ---- VERIFY CALLBACK ----
+  steps.push({ lane: "Server — signature verification" });
+
+  steps.push({
+    title: "POST /payments/verify-callback",
+    desc: "Frontend hands the signature to the server. Server HMAC-verifies order_id|payment_id against key_secret.",
+    done: !!evAttempt && evAttempt.trigger === "verify-callback",
+    evidence: (evAttempt && evAttempt.trigger === "verify-callback") ? "trigger=verify-callback" : "",
+    skipped: !!evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted,
+    skippedReason: "auto-hop in consumer covered this",
+  });
+
+  // ---- WEBHOOK ----
+  steps.push({ lane: "Razorpay → our webhook" });
+
+  steps.push({
+    title: "Razorpay POSTs payment.captured webhook",
+    desc: "In production, Razorpay servers POST to /payments/webhook/{tenant}. Locally, /dev/simulate fires the same call.",
+    done: !!capturedWebhook,
+    evidence: capturedWebhook ? `event_id=${capturedWebhook.event_id}` : "",
+    ts: capturedWebhook ? shortTs(capturedWebhook.received_at) : "",
+  });
+
+  steps.push({
+    title: "Producer verifies HMAC signature",
+    desc: "x-razorpay-signature header matched against tenant's webhook_secret (with previous secret fallback). Runs before payload parse.",
+    done: !!capturedWebhook,  // if the row exists, signature passed (producer rejects otherwise)
+    evidence: capturedWebhook ? "signature OK" : "",
+  });
+
+  steps.push({
+    title: "Producer publishes to webhook-events.fifo",
+    desc: "Returns 200 to Razorpay in <500ms. No DB access in producer.",
+    done: !!capturedWebhook,
+    evidence: capturedWebhook ? `correlation_id=${capturedWebhook.correlation_id}` : "",
+  });
+
+  // ---- CONSUMER ----
+  steps.push({ lane: "Consumer Lambda — webhook processing" });
+
+  steps.push({
+    title: "Consumer receives SQS message",
+    desc: "Long-poll receive_message. Envelope parsed.",
+    done: !!capturedWebhook && capturedWebhook.processing_status !== null,
+    evidence: capturedWebhook ? `processing_status=${capturedWebhook.processing_status}` : "",
+  });
+
+  steps.push({
+    title: "Fast-path dedup + FOR UPDATE row lock",
+    desc: "ON CONFLICT (tenant_id, event_id) DO NOTHING. Then SELECT ... FOR UPDATE on orders. Primary idempotency guard runs.",
+    done: !!evPaid,
+    evidence: evPaid ? "row locked, guard PROCEED" : "",
+  });
+
+  steps.push({
+    title: "Auto-hop created → attempted",
+    desc: "Consumer inserts missing attempted hop when webhook arrives on a still-created order (server-to-server or verify-callback-less flow).",
+    done: !!(evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted),
+    evidence: (evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted)
+      ? `auto_attempted=true ${shortTs(evAttempt.created_at)}` : "",
+    skipped: !!(evAttempt && (!evAttempt.metadata || !evAttempt.metadata.auto_attempted)),
+    skippedReason: "verify-callback already set attempted",
+  });
+
+  steps.push({
+    title: "Transition attempted → paid",
+    desc: "OrderService.transition asserts allowed edge. INSERT payments row with is_authoritative=TRUE.",
+    done: !!evPaid,
+    evidence: evPaid ? "" : "",
+    ts: evPaid ? shortTs(evPaid.created_at) : "",
+  });
+
+  steps.push({
+    title: "Publish to fulfillment-queue.fifo",
+    desc: "After commit (Critical Invariant 8: DB before side effects). Carries correlation_id in MessageAttributes.",
+    done: !!evPaid,
+    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "",
+  });
+
+  // ---- FULFILLMENT ----
+  steps.push({ lane: "Fulfillment Lambda" });
+
+  steps.push({
+    title: "Fulfillment receives message",
+    desc: "SQS event-source mapping invokes the function. Order row locked again.",
+    done: !!evFulfill,
+    evidence: "",
+  });
+
+  steps.push({
+    title: "FulfillmentHook.fulfill() runs",
+    desc: "Host application code (in this dev backend: DefaultFulfillmentHook which is a no-op). Must be idempotent.",
+    done: !!evFulfill,
+    evidence: "",
+  });
+
+  steps.push({
+    title: "Transition paid → fulfilled",
+    desc: "Order reaches terminal happy state. order_events row written with trigger='fulfillment'.",
+    done: !!evFulfill,
+    evidence: evFulfill ? "" : "",
+    ts: evFulfill ? shortTs(evFulfill.created_at) : "",
+  });
+
+  // ---- TERMINAL ----
+  steps.push({ lane: "Outcome" });
+
+  steps.push({
+    title: "Order fulfilled — customer sees success page",
+    desc: "Storefront finishes polling. End of happy path.",
+    done: isFulfilled,
+    failed: isFailedTerminal && !isFulfilled,
+    evidence: `status=${o.status}`,
+    ts: o.fulfilled_at ? shortTs(o.fulfilled_at) : "",
+  });
+
+  // Optional: refund leg
+  if (refunds.length || refundWebhook || evRefund) {
+    steps.push({ lane: "Refund (optional)" });
+    steps.push({
+      title: "refund.processed webhook arrives",
+      desc: "Customer (or admin) initiated a refund through Razorpay.",
+      done: !!refundWebhook,
+      evidence: refundWebhook ? `event_id=${refundWebhook.event_id}` : "",
+      ts: refundWebhook ? shortTs(refundWebhook.received_at) : "",
+    });
+    steps.push({
+      title: "Order transitioned to refunded",
+      desc: "UPDATE existing captured payments row to status='refunded'. INSERT refunds row.",
+      done: !!evRefund,
+      evidence: refunds[0] ? `razorpay_refund_id=${refunds[0].razorpay_refund_id}` : "",
+      ts: evRefund ? shortTs(evRefund.created_at) : "",
+    });
+  }
+
+  return steps;
+}
+
+function renderJourney(flow) {
+  const root = $("journey");
+  const summaryEl = $("journey-summary");
+  if (!flow) {
+    root.innerHTML = "<div class='small'>Pick an order on the left to see the full payment journey.</div>";
+    summaryEl.innerHTML = "";
+    return;
+  }
+  const steps = buildJourneySteps(flow);
+
+  // Mark the first non-done non-skipped step as "active".
+  let foundActive = false;
+  steps.forEach(s => {
+    if (s.lane) return;
+    if (!foundActive && !s.done && !s.skipped && !s.failed) {
+      s.active = true;
+      foundActive = true;
+    }
+  });
+
+  // Stats chips
+  const total = steps.filter(s => !s.lane).length;
+  const done  = steps.filter(s => !s.lane && s.done).length;
+  const skipped = steps.filter(s => !s.lane && s.skipped).length;
+  const failed = steps.filter(s => !s.lane && s.failed).length;
+  summaryEl.innerHTML = `
+    <span class="chip">${done}/${total} done</span>
+    <span class="chip" style="color: var(--good)">✓ ${done}</span>
+    <span class="chip" style="color: var(--accent)">◐ ${foundActive ? 1 : 0} active</span>
+    <span class="chip" style="color: var(--idle)">○ ${total - done - skipped - failed - (foundActive?1:0)} pending</span>
+    ${skipped ? `<span class="chip" style="color: var(--idle)">⊘ ${skipped} skipped</span>` : ""}
+    ${failed ? `<span class="chip" style="color: var(--bad)">✕ ${failed} failed</span>` : ""}
+  `;
+
+  // Render steps
+  let counter = 0;
+  root.innerHTML = steps.map(s => {
+    if (s.lane) return `<div class="lane">${s.lane}</div>`;
+    counter++;
+    const cls = s.failed ? "failed" : s.done ? "done" : s.active ? "active" : s.skipped ? "skipped" : "pending";
+    const dotChar = s.failed ? "✕" : s.done ? "✓" : s.active ? "◐" : s.skipped ? "⊘" : counter;
+    return `
+      <div class="step ${cls}">
+        <div class="dot">${dotChar}</div>
+        <div class="body">
+          <div class="title">${s.title}</div>
+          <div class="desc">${s.desc}${s.skipped && s.skippedReason ? ` <em>(${s.skippedReason})</em>` : ""}</div>
+          ${s.evidence ? `<div class="evidence">${s.evidence}</div>` : ""}
+        </div>
+        <div class="ts">${s.ts || ""}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setStateMachine(status) {
+  const order = ["initializing","created","attempted","authorized","paid","fulfilled"];
+  const idx = order.indexOf(status);
+  document.querySelectorAll("#state-machine .node").forEach(n => {
+    n.classList.remove("active", "past");
+  });
+  if (!status) return;
+  // Terminal off-path nodes
+  ["failed","fulfillment_failed","refunded"].forEach(s => {
+    if (status === s) {
+      const el = document.querySelector(`#state-machine .node[data-s="${s}"]`);
+      if (el) el.classList.add("active");
+    }
+  });
+  if (idx >= 0) {
+    order.forEach((s, i) => {
+      const el = document.querySelector(`#state-machine .node[data-s="${s}"]`);
+      if (!el) return;
+      if (i < idx) el.classList.add("past");
+      else if (i === idx) el.classList.add("active");
+    });
+  }
+}
+
+function fillTable(id, rows) {
+  const tbody = document.querySelector("#" + id + " tbody");
+  // Render cells as text. Metadata column (index 4 in order-events) gets the
+  // `metadata` class so the JSON wraps and stays fully selectable for Ctrl-A.
+  const escape = (s) => String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  tbody.innerHTML = rows.map(cells =>
+    "<tr>" + cells.map((c, i) => {
+      const cls = i === 4 ? "metadata" : "mono";
+      // The status pill cell already contains HTML; pass it through unescaped.
+      const isHtml = typeof c === "string" && c.startsWith("<span");
+      const content = isHtml ? c : escape(c);
+      return `<td class="${cls}">${content}</td>`;
+    }).join("") + "</tr>"
+  ).join("");
+}
+
+// Pull tenant id once
+(async () => {
+  try {
+    const r = await api("/dev/flow");
+    if (r.orders[0]) { /* nothing — header still shows */ }
+  } catch (e) {}
+})();
+
+// Show tenant in header (cheap)
+fetch("/dev/queues").then(r => r.json()).then(j => {
+  // tenant not in queues, leave as is. We'll set via first order if any.
+});
+$("tenant-id").textContent = "local-dev";
+
+// ------- snapshot for chat hand-off -------
+
+async function buildSnapshot() {
+  const lines = [];
+  lines.push("=== RAZORPAY DASHBOARD SNAPSHOT ===");
+  lines.push("captured_at: " + new Date().toISOString());
+  lines.push("tenant: local-dev");
+  lines.push("");
+
+  try {
+    const q = await api("/dev/queues");
+    lines.push("--- SQS queue depths ---");
+    Object.entries(q.queues).forEach(([n, v]) => {
+      lines.push(`  ${n}: visible=${v.visible ?? "?"} inflight=${v.inflight ?? "?"}`);
+    });
+    lines.push("");
+  } catch (e) { lines.push("queues fetch failed: " + e.message); }
+
+  try {
+    const list = await api("/dev/flow");
+    lines.push("--- Recent orders (last " + list.orders.length + ") ---");
+    list.orders.forEach(o => {
+      lines.push(`  ${o.status.padEnd(10)} ${o.razorpay_order_id || o.id} receipt=${o.receipt}`);
+    });
+    lines.push("");
+  } catch (e) { lines.push("recent orders fetch failed: " + e.message); }
+
+  if (currentOrderId) {
+    try {
+      const f = await api("/dev/flow/" + currentOrderId);
+      lines.push("--- Selected order ---");
+      lines.push(JSON.stringify(f.order, null, 2));
+      lines.push("");
+      lines.push("--- order_events (" + f.order_events.length + ") ---");
+      f.order_events.forEach(e => {
+        lines.push(`[${e.created_at}] ${e.from_status || "—"} -> ${e.to_status} trigger=${e.trigger}`);
+        lines.push(`  metadata: ${JSON.stringify(e.metadata || {})}`);
+        lines.push(`  correlation_id: ${e.correlation_id || "—"}`);
+      });
+      lines.push("");
+      lines.push("--- webhook_events (" + f.webhook_events.length + ") ---");
+      f.webhook_events.forEach(e => {
+        lines.push(`[${e.received_at}] ${e.event} status=${e.processing_status} event_id=${e.event_id}`);
+        lines.push(`  correlation_id: ${e.correlation_id || "—"}`);
+      });
+      lines.push("");
+      lines.push("--- payments (" + f.payments.length + ") ---");
+      f.payments.forEach(p => {
+        lines.push(`${p.razorpay_payment_id} status=${p.status} amount=${p.amount} authoritative=${p.is_authoritative} attempt=${p.attempt_number}`);
+      });
+      lines.push("");
+      lines.push("--- refunds (" + f.refunds.length + ") ---");
+      f.refunds.forEach(p => {
+        lines.push(`${p.razorpay_refund_id} status=${p.status} amount=${p.amount}`);
+      });
+    } catch (e) { lines.push("flow fetch failed: " + e.message); }
+  } else {
+    lines.push("(no order selected — pick one from Recent orders to get full detail)");
+  }
+
+  lines.push("");
+  lines.push("--- Activity log (newest first) ---");
+  lines.push(logEl.value || "(empty)");
+
+  return lines.join("\n");
+}
+
+$("btn-snapshot").addEventListener("click", async () => {
+  const text = await buildSnapshot();
+  $("snapshot").value = text;
+  try {
+    await navigator.clipboard.writeText(text);
+    $("snapshot-feedback").textContent = "✓ copied to clipboard (" + text.length + " chars)";
+  } catch (e) {
+    $("snapshot-feedback").textContent = "select the box and copy manually";
+  }
+  setTimeout(() => $("snapshot-feedback").textContent = "", 4000);
+});
+
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
