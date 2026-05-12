@@ -54,6 +54,12 @@ from razorpay_checkout.state_machine import (
     is_stale_failed_event,
 )
 from razorpay_checkout.tenants import TenantConfigRegistry
+from razorpay_checkout.webhook_consumer import (
+    AmountMismatchError,
+    ConsumerEnvelopeError,
+    WebhookConsumer,
+)
+from razorpay_checkout.webhook_idempotency import SkipDecision, should_skip
 from razorpay_checkout.webhook_producer import (
     MalformedPayloadError,
     PublishFailureError,
@@ -74,8 +80,10 @@ __all__ = [
     "TERMINAL",
     "WEBHOOK_EVENTS_DLQ_NAME",
     "WEBHOOK_EVENTS_QUEUE_NAME",
+    "AmountMismatchError",
     "AmountResolutionError",
     "AmountResolver",
+    "ConsumerEnvelopeError",
     "FixedAmountResolver",
     "IllegalTransitionError",
     "MalformedPayloadError",
@@ -88,9 +96,11 @@ __all__ = [
     "RazorpayConfig",
     "RazorpayUnavailableError",
     "SignatureMismatchError",
+    "SkipDecision",
     "TenantConfigRegistry",
     "UnknownTenantError",
     "WebhookAckResponse",
+    "WebhookConsumer",
     "WebhookProducer",
     "__version__",
     "assert_transition",
@@ -109,4 +119,5 @@ __all__ = [
     "publish_webhook_event",
     "register_secret",
     "set_correlation_id",
+    "should_skip",
 ]

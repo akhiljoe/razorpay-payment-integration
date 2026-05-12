@@ -1492,3 +1492,61 @@ into the SQS message envelope. Consumer reads the envelope and uses
 `INSERT INTO webhook_events (..., received_at, ...) VALUES (..., $env_ts, ...)`.
 The DB default `NOW()` remains as a safety fallback only for direct inserts
 outside the application path.
+
+### 17.6 asyncpg requires `datetime` for TIMESTAMPTZ params, not ISO strings (Phase 8)
+
+**Rule.** When passing a timestamp value as an asyncpg query parameter, parse
+it to a `datetime.datetime` object first. The SQL-side `::timestamptz` cast
+does not help; asyncpg validates the parameter type **client-side** before
+the SQL ever reaches Postgres.
+
+**Why.** asyncpg's binary protocol encodes parameters in their native binary
+representations. The codec for `timestamptz` only knows how to encode
+`datetime` instances. Passing a string raises
+`asyncpg.exceptions.DataError: invalid input for query argument $N:
+'2026-05-12T09:38:48.178Z' (expected a datetime.date or datetime.datetime
+instance, got 'str')`. The exception originates client-side; Postgres never
+sees the value.
+
+**Trap.** It is tempting to write `VALUES (..., $N::timestamptz)` and pass an
+ISO string, reasoning that Postgres will parse it. The cast in SQL has no
+effect on parameter encoding. The parameter is rejected before query
+submission.
+
+**How to apply.** Any module that receives ISO-8601 timestamps over the wire
+(SQS message envelopes, Razorpay API responses, JSON files) and persists them
+via asyncpg must convert to `datetime` before the asyncpg call:
+
+```python
+from datetime import datetime
+ts = datetime.fromisoformat(envelope["received_at"])  # 3.11+ handles trailing 'Z'
+await conn.execute("INSERT INTO t (received_at) VALUES ($1)", ts)
+```
+
+The consumer's helper `_parse_received_at` in `webhook_consumer.py` does
+this conversion at the boundary between SQS and Postgres.
+
+### 17.7 Orchestrator post-handler writes can overwrite handler-set state (Phase 8)
+
+**Rule.** When a generic orchestrator runs cleanup after a handler (e.g.,
+`UPDATE webhook_events SET processing_status = 'done'`), and the handler may
+have already set the same field to a different value (e.g., `'failed'`), the
+orchestrator MUST gate its cleanup on a flag returned by the handler.
+
+**Why.** The consumer's `_run_in_transaction` ran `_mark_event_done` after
+every successful handler return, on the assumption that the handler had not
+written to `webhook_events.processing_status`. The refund handler violated
+this assumption by calling `_mark_failed_in_handler` on unknown-payment, then
+returning normally. The orchestrator's post-handler write then overwrote
+`'failed'` with `'done'`, breaking the operator's signal that this event
+needs reconciliation.
+
+**How to apply.** The handler outcome carries `event_already_marked: bool`.
+Any handler that calls `_mark_failed_in_handler` (or otherwise writes
+`webhook_events.processing_status` from inside the transaction) MUST set
+`event_already_marked=True` on its returned `_HandlerOutcome`. The
+orchestrator skips its `_mark_event_done` call when this flag is set.
+
+More generally: when an orchestrator and its callees share a write target,
+the callees must communicate write intent back to the orchestrator. Silent
+overwrites are the failure mode.
