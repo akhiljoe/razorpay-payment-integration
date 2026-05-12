@@ -116,3 +116,49 @@ class RazorpayClient:
 
         data: dict[str, Any] = response.json()
         return data
+
+    async def list_payments(
+        self,
+        *,
+        from_unix: int,
+        to_unix: int,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """GET /v1/payments with skip+count pagination, accumulated.
+
+        Razorpay's `from`/`to` parameters take Unix timestamps (seconds).
+        Pagination is `skip` (offset) + `count` (limit). Iterates until the
+        page comes back shorter than `count`.
+        """
+        all_items: list[dict[str, Any]] = []
+        skip = 0
+        while True:
+            params = {
+                "from": from_unix,
+                "to": to_unix,
+                "count": page_size,
+                "skip": skip,
+            }
+            try:
+                response = await self._client.get("/v1/payments", params=params)
+            except httpx.TimeoutException as exc:
+                raise RazorpayUnavailableError("Razorpay list_payments timeout") from exc
+            except httpx.TransportError as exc:
+                raise RazorpayUnavailableError(f"transport error: {exc}") from exc
+            if response.status_code >= 500:
+                raise RazorpayUnavailableError(
+                    f"Razorpay returned {response.status_code}"
+                )
+            if response.status_code >= 400:
+                try:
+                    body: Any = response.json()
+                except ValueError:
+                    body = response.text
+                raise RazorpayAPIError(response.status_code, body)
+            body = response.json()
+            items = body.get("items") or []
+            all_items.extend(items)
+            if len(items) < page_size:
+                break
+            skip += page_size
+        return all_items

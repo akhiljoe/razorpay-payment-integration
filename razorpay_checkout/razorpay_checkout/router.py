@@ -252,3 +252,225 @@ async def webhook(
         content={"status": ack.status, "correlation_id": ack.correlation_id},
         headers={"X-Correlation-Id": ack.correlation_id},
     )
+
+
+# ---------- Admin auth dependency + routes ----------
+
+import hmac as _hmac  # noqa: E402
+from datetime import date as _date  # noqa: E402
+
+import asyncpg as _asyncpg_for_admin  # noqa: E402, PLC0415
+
+from razorpay_checkout.client import RazorpayClient as _RazorpayClient  # noqa: E402
+from razorpay_checkout.models import (  # noqa: E402
+    ReconcileResponse,
+    ReplayEventResponse,
+    RetryFulfillmentResponse,
+)
+from razorpay_checkout.queue import publish_fulfillment_message  # noqa: E402
+from razorpay_checkout.reconcile import reconcile as _reconcile  # noqa: E402
+
+
+def require_admin(
+    request: Request,
+    config: Annotated[RazorpayConfig, Depends(get_config)],
+) -> None:
+    """Reject the request unless `X-Admin-Api-Key` matches `config.admin_api_key`.
+
+    Returns 403 when `admin_api_key is None` (admin API disabled). Uses
+    `hmac.compare_digest` to defeat timing oracles.
+    """
+    if config.admin_api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin_api_disabled",
+        )
+    incoming = request.headers.get("x-admin-api-key", "")
+    expected = config.admin_api_key.get_secret_value()
+    if not _hmac.compare_digest(incoming.encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin_api_key_mismatch",
+        )
+
+
+def get_pool(request: Request) -> _asyncpg_for_admin.Pool:
+    pool = getattr(request.app.state, "razorpay_pool", None)
+    if pool is None:
+        raise RuntimeError("asyncpg.Pool not registered on app.state.razorpay_pool")
+    return pool
+
+
+def get_sqs_client(request: Request) -> object:
+    client = getattr(request.app.state, "sqs_client", None)
+    if client is None:
+        raise RuntimeError("SQS client not registered on app.state.sqs_client")
+    return client
+
+
+def get_razorpay_client(request: Request) -> _RazorpayClient:
+    client = getattr(request.app.state, "razorpay_client", None)
+    if client is None:
+        raise RuntimeError("RazorpayClient not registered on app.state.razorpay_client")
+    return client  # type: ignore[no-any-return]
+
+
+def get_fulfillment_queue_url(request: Request) -> str:
+    url = getattr(request.app.state, "fulfillment_queue_url", None)
+    if not url:
+        raise RuntimeError(
+            "fulfillment_queue_url not registered on app.state.fulfillment_queue_url"
+        )
+    return url  # type: ignore[no-any-return]
+
+
+@payments_router.get(
+    "/reconcile",
+    response_model=ReconcileResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def reconcile_endpoint(
+    from_date: _date,
+    to_date: _date,
+    config: Annotated[RazorpayConfig, Depends(get_config)],
+    pool: Annotated[_asyncpg_for_admin.Pool, Depends(get_pool)],
+    razorpay_client: Annotated[_RazorpayClient, Depends(get_razorpay_client)],
+) -> ReconcileResponse:
+    """Reconcile Razorpay payments in [from_date, to_date] with the local DB."""
+    return await _reconcile(
+        pool=pool,
+        client=razorpay_client,
+        tenant_id=config.tenant_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+@payments_router.post(
+    "/admin/events/{event_id}/replay",
+    response_model=ReplayEventResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def replay_event(
+    event_id: UUID,
+    config: Annotated[RazorpayConfig, Depends(get_config)],
+    pool: Annotated[_asyncpg_for_admin.Pool, Depends(get_pool)],
+) -> ReplayEventResponse:
+    """Reset a `failed` or `dead` webhook event back to `pending`."""
+    async with pool.acquire() as conn:
+        # First, check the current state for the right error code on conflict.
+        existing = await conn.fetchrow(
+            "SELECT processing_status FROM webhook_events WHERE id = $1 AND tenant_id = $2",
+            event_id,
+            config.tenant_id,
+        )
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="event_not_found"
+            )
+        previous_status: str = existing["processing_status"]
+        if previous_status not in ("failed", "dead"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"event_in_{previous_status}_state",
+            )
+        await conn.execute(
+            """
+            UPDATE webhook_events
+               SET processing_status = 'pending',
+                   attempts = 0,
+                   error = NULL,
+                   processed_at = NULL
+             WHERE id = $1 AND tenant_id = $2
+            """,
+            event_id,
+            config.tenant_id,
+        )
+    _log.info(
+        "admin_replay_event",
+        event_id=str(event_id),
+        previous_status=previous_status,
+    )
+    return ReplayEventResponse(
+        event_id=event_id,
+        previous_status=previous_status,
+        new_status="pending",
+    )
+
+
+@payments_router.post(
+    "/admin/orders/{order_id}/retry-fulfillment",
+    response_model=RetryFulfillmentResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def retry_fulfillment(
+    order_id: UUID,
+    config: Annotated[RazorpayConfig, Depends(get_config)],
+    pool: Annotated[_asyncpg_for_admin.Pool, Depends(get_pool)],
+    sqs_client: Annotated[object, Depends(get_sqs_client)],
+    queue_url: Annotated[str, Depends(get_fulfillment_queue_url)],
+    correlation_id: Annotated[str, Depends(correlation_id_dependency)],
+) -> RetryFulfillmentResponse:
+    """Re-enqueue an SQS fulfillment message for a paid or fulfillment_failed order."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT o.id, o.status,
+                   p.razorpay_payment_id
+              FROM orders o
+              LEFT JOIN payments p
+                ON p.order_id = o.id AND p.is_authoritative = TRUE
+             WHERE o.id = $1 AND o.tenant_id = $2
+            """,
+            order_id,
+            config.tenant_id,
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="order_not_found"
+            )
+        order_status: str = row["status"]
+        if order_status not in ("paid", "fulfillment_failed"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"order_in_{order_status}_state",
+            )
+        razorpay_payment_id: str = row["razorpay_payment_id"] or ""
+
+        message_id = await publish_fulfillment_message(
+            sqs_client=sqs_client,
+            queue_url=queue_url,
+            order_id=str(order_id),
+            tenant_id=config.tenant_id,
+            razorpay_payment_id=razorpay_payment_id,
+            correlation_id=correlation_id,
+        )
+
+        await conn.execute(
+            """
+            INSERT INTO order_events
+                (order_id, tenant_id, from_status, to_status,
+                 trigger, correlation_id, metadata)
+            VALUES ($1, $2, $3, $3, 'admin_retry', $4, $5)
+            """,
+            order_id,
+            config.tenant_id,
+            order_status,
+            correlation_id,
+            {"sqs_message_id": message_id, "razorpay_payment_id": razorpay_payment_id},
+        )
+
+    _log.info(
+        "admin_retry_fulfillment",
+        order_id=str(order_id),
+        sqs_message_id=message_id,
+        previous_status=order_status,
+        correlation_id=correlation_id,
+    )
+    # Pydantic's Literal validator accepts the runtime string and we
+    # already gated on the two allowed values above.
+    return RetryFulfillmentResponse(
+        order_id=order_id,
+        sqs_message_id=message_id,
+        previous_status=order_status,  # type: ignore[arg-type]
+    )

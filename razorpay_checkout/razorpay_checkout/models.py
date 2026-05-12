@@ -107,3 +107,44 @@ class OrderRecord(BaseModel):
     failed_at: datetime | None = None
     refunded_at: datetime | None = None
     updated_at: datetime
+
+
+# ---------- Admin: replay event / retry fulfillment / reconcile ----------
+
+
+class ReplayEventResponse(BaseModel):
+    event_id: UUID
+    previous_status: str
+    new_status: Literal["pending"]
+
+
+class RetryFulfillmentResponse(BaseModel):
+    order_id: UUID
+    sqs_message_id: str
+    previous_status: Literal["paid", "fulfillment_failed"]
+
+
+ReconcileReason = Literal[
+    "missing_in_local_db",
+    "amount_mismatch",
+    "status_mismatch",
+    "refund_status_mismatch",
+]
+
+
+class ReconcileMismatch(BaseModel):
+    razorpay_payment_id: str
+    reason: ReconcileReason
+    razorpay_amount: int | None = None
+    local_amount: int | None = None
+    razorpay_status: str | None = None
+    local_status: str | None = None
+
+
+class ReconcileResponse(BaseModel):
+    from_date: str
+    to_date: str
+    total_razorpay_payments_fetched: int
+    total_local_payments: int
+    mismatches: list[ReconcileMismatch]
+

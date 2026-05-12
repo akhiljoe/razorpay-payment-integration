@@ -36,6 +36,13 @@ from razorpay_checkout.fulfillment import (
     FulfillmentResult,
 )
 from razorpay_checkout.logging_config import configure_logging, get_logger, register_secret
+from razorpay_checkout.models import (
+    OrderStatusResponse,
+    ReconcileMismatch,
+    ReconcileResponse,
+    ReplayEventResponse,
+    RetryFulfillmentResponse,
+)
 from razorpay_checkout.orders import OrderNotFoundError, OrderService
 from razorpay_checkout.queue import (
     FULFILLMENT_DLQ_NAME,
@@ -49,6 +56,7 @@ from razorpay_checkout.queue import (
     publish_fulfillment_message,
     publish_webhook_event,
 )
+from razorpay_checkout.reconcile import reconcile
 from razorpay_checkout.router import payments_router
 from razorpay_checkout.state_machine import (
     ALLOWED_TRANSITIONS,
@@ -102,11 +110,16 @@ __all__ = [
     "OrderNotFoundError",
     "OrderService",
     "OrderStatus",
+    "OrderStatusResponse",
     "PublishFailureError",
     "RazorpayAPIError",
     "RazorpayClient",
     "RazorpayConfig",
     "RazorpayUnavailableError",
+    "ReconcileMismatch",
+    "ReconcileResponse",
+    "ReplayEventResponse",
+    "RetryFulfillmentResponse",
     "SignatureMismatchError",
     "SkipDecision",
     "TenantConfigRegistry",
@@ -129,6 +142,7 @@ __all__ = [
     "payments_router",
     "publish_fulfillment_message",
     "publish_webhook_event",
+    "reconcile",
     "register_secret",
     "set_correlation_id",
     "should_skip",
