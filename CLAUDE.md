@@ -27,27 +27,32 @@ Razorpay payment integration module. Embeddable across multiple websites via a F
 
 ## Architecture
 
-Two AWS Lambda functions connected by an SQS FIFO queue (`fulfillment-queue.fifo`).
+Three AWS Lambda functions connected by two SQS FIFO queue pairs. The split exists for two reasons: (1) Razorpay's 500 ms response SLA, decoupled from DB latency, and (2) the public-facing function holds zero database credentials.
 
 | Lambda | Trigger | Responsibilities |
 |---|---|---|
-| **Webhook Lambda** | `POST /payments/webhook/{tenant_id}` | Tenant lookup, signature verification, idempotency, DB transitions, SQS publish |
+| **Webhook Producer** | `POST /payments/webhook/{tenant_id}` | Tenant lookup, signature verification, fast-parse payload, publish to `webhook-events.fifo`. **No DB access.** |
+| **Webhook Consumer** | SQS `webhook-events.fifo` | Fast-path dedup, primary idempotency guard, DB transitions, INSERT payments/refunds/order_events, publish to `fulfillment-queue.fifo` on `paid` transitions |
 | **Fulfillment Lambda** | SQS `fulfillment-queue.fifo` | Invoke `FulfillmentHook`, transition order to `fulfilled` or `fulfillment_failed`, write `order_events` |
 
-Webhook Lambda must return `200` to Razorpay within 500 ms. Fulfillment Lambda has SQS-native retry (`maxReceiveCount=5`) and DLQ (`fulfillment-dlq.fifo`).
+Webhook Producer must return `200` to Razorpay within 500 ms. Webhook Consumer and Fulfillment Lambda both have SQS-native retry (`maxReceiveCount=5`) and DLQs (`webhook-events-dlq.fifo`, `fulfillment-dlq.fifo`).
+
+**Network posture is tier-dependent.** Free Track: all Lambdas public, no VPC, no Interface Endpoints, $0 network cost. Paid Track / RDS-in-VPC: Consumer and Fulfillment move into private subnets with SQS / Secrets Manager / Logs / Monitoring VPC Interface Endpoints. Switching is a CDK diff; application code is identical.
 
 DB: PostgreSQL. Tables: `tenants`, `orders`, `payments`, `refunds`, `webhook_events`, `order_events`. All schema in Alembic migrations. No `metadata.create_all()`. `updated_at` is maintained by a DB-level `BEFORE UPDATE` trigger, never by application code.
 
 ## Critical Invariants
 
-1. **Tenant isolation**: Every query against `orders`, `payments`, `refunds`, `webhook_events`, and `order_events` must include a `tenant_id` filter. Enforced by `OrderService` and `WebhookProcessor`, never by the caller.
+1. **Tenant isolation**: Every query against `orders`, `payments`, `refunds`, `webhook_events`, and `order_events` must include a `tenant_id` filter. Enforced by `OrderService` and the Webhook Consumer, never by the caller.
 2. **Tenant ID source**: `tenant_id` is extracted from the URL path parameter on the webhook route. It must never come from the request body, query string, or header.
-3. **Webhook secret lookup**: Verify `X-Razorpay-Signature` against the tenant-specific `webhook_secret` first, fall back to `webhook_secret_previous` if set. Both checks use `hmac.compare_digest`. Verification precedes payload deserialization.
-4. **Primary idempotency guard (event-type aware)**: Inside the DB transaction, after `SELECT ... FOR UPDATE` on the order, check whether the event's target state has already been reached. Rules per event type are in DESIGN_v5 Section 2.1 step 6 and the webhook-idempotency rule. `event_id ON CONFLICT DO NOTHING` is the secondary fast-path.
-5. **State transition ordering**: Acquire `SELECT ... FOR UPDATE` on `orders` before any state change. Assert `event_amount == order.amount` on capture and authorize events.
-6. **Order creation sequence**: INSERT local `orders` row with `status=initializing` before calling Razorpay. Razorpay is never ahead of the DB.
-7. **DB commit before side effects**: The webhook DB transaction commits before any SQS publish, log, or external call.
-8. **Correlation ID propagation**: Generate a UUIDv4 at every HTTP entry. Persist on `orders`, `webhook_events`, `order_events`. Include in SQS `MessageAttributes`. Pass to `FulfillmentHook.metadata`. Every log line and OTel span carries it.
+3. **Webhook secret lookup**: Verify `X-Razorpay-Signature` against the tenant-specific `webhook_secret` first, fall back to `webhook_secret_previous` if set. Both checks use `hmac.compare_digest`. Verification precedes payload deserialization. Runs in the **Webhook Producer**.
+4. **Producer has no DB credentials**: The Webhook Producer holds IAM permission only for `webhook-events.fifo:SendMessage` and the per-tenant secret read. Any DB access from the producer module is a bug.
+5. **Primary idempotency guard (event-type aware)**: Inside the Consumer's DB transaction, after `SELECT ... FOR UPDATE` on the order, check whether the event's target state has already been reached. Rules per event type are in DESIGN_v5 Section 2.1 step 10 and the webhook-idempotency rule. `event_id ON CONFLICT DO NOTHING` is the secondary fast-path.
+6. **State transition ordering**: Acquire `SELECT ... FOR UPDATE` on `orders` before any state change. Assert `event_amount == order.amount` on capture and authorize events.
+7. **Order creation sequence**: INSERT local `orders` row with `status=initializing` before calling Razorpay. Razorpay is never ahead of the DB.
+8. **DB commit before side effects**: The Consumer's DB transaction commits before any `fulfillment-queue.fifo` publish, log, or external call.
+9. **Correlation ID propagation**: Generate a UUIDv4 at the Producer entry. Carry through `webhook-events.fifo` `MessageAttributes`, persist on `webhook_events`, `orders`, `order_events`. Re-bind from `MessageAttributes` at the Consumer and Fulfillment Lambda entries. Pass to `FulfillmentHook.metadata`. Every log line and OTel span carries it.
+10. **`received_at` is producer-set**: The Consumer takes `received_at` from the SQS message envelope, not `NOW()`. This preserves Razorpay-perceived receipt time despite the producer-to-consumer hop.
 
 ## State Machine
 

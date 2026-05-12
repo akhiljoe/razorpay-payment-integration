@@ -160,25 +160,44 @@ class WebhookAckResponse(BaseModel):
 | `refund.processed` | `paid -> refunded` OR `fulfilled -> refunded` OR `fulfillment_failed -> refunded` |
 | `order.paid` | Diagnostic only; logged, no state change |
 
-**Internal pipeline:**
+**Internal pipeline (Webhook Producer, runs outside VPC):**
 
-1. Generate `correlation_id` (UUIDv4) at handler entry. Attach to every log line, every OTel span, and the SQS message attributes for downstream consumers.
+The producer holds no database credentials. Its sole responsibilities are signature verification and durable enqueue. It does not query, insert, or update Postgres.
+
+1. Generate `correlation_id` (UUIDv4) at handler entry. Attach to every log line, every OTel span, and the SQS message attributes for the consumer.
 2. Look up `RazorpayConfig` from `TenantConfigRegistry`. Return `400 Bad Request` if the tenant is unknown. The multi-tenant URL space is publicly enumerable; 400 avoids leaking tenant existence.
 3. Verify `X-Razorpay-Signature` using `webhook_secret`, falling back to `webhook_secret_previous` if set. Both use `hmac.compare_digest`. Return `400` on mismatch.
-4. INSERT into `webhook_events` with `ON CONFLICT (tenant_id, event_id) DO NOTHING`. Increment `webhook_duplicate_count` on conflict. Return `200 queued` on exact `event_id` duplicate.
-5. Begin DB transaction. Acquire `SELECT ... FOR UPDATE` on the `orders` row.
-6. **Primary idempotency guard.** Determine if the event's intended transition has already been applied:
-   - `payment.captured`: skip if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed', 'refunded')` AND a captured `payments` row exists for this `razorpay_payment_id`.
-   - `payment.authorized`: skip if `order.status IN ('authorized', 'paid', 'fulfilled', 'fulfillment_failed', 'refunded')`.
-   - `payment.failed`: skip if `order.status IN ('failed', 'refunded')`. No-op (mark `done`) if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed')`.
-   - `refund.processed`: skip if `order.status = 'refunded'`.
+4. Fast-parse the payload to extract `event_id`, `event`, and `razorpay_order_id` (for `MessageGroupId`). Reject malformed JSON with `400`.
+5. Publish to `webhook-events.fifo` with:
+   - Body: the raw signed payload plus an envelope `{tenant_id, event_id, event, received_at}` where `received_at` is the producer's wall clock at HTTP entry.
+   - `MessageGroupId=razorpay_order_id` to preserve per-order event ordering (`authorized` before `captured`).
+   - `MessageDeduplicationId=f"{tenant_id}:{event_id}"` so SQS suppresses Razorpay duplicates within the 5-minute FIFO dedup window before they reach the consumer.
+   - `MessageAttributes.correlation_id` set to the value generated in step 1.
+6. Return `200 queued`.
 
-   On skip, mark `webhook_events.processing_status = 'done'`, commit, return `200 queued`.
-7. Assert `event_amount == order.amount` for capture and authorize events. On mismatch, set `processing_status='failed'`, alert, return `200 queued`. Do not return `500`.
-8. Execute the state transition via `OrderService.transition` (Section 4). Insert payment row only for terminal payment outcomes (`captured`, `failed`). Refunds UPDATE the existing captured `payments` row to `status='refunded'` and INSERT a row into `refunds`. Insert `order_events` for every transition.
-9. Commit the transaction.
-10. On a successful `paid` transition, publish to `fulfillment-queue.fifo` with `MessageGroupId=order_id` and `correlation_id` in `MessageAttributes`.
-11. Return `200 queued`.
+**Internal pipeline (Webhook Consumer, runs inside VPC):**
+
+The consumer is triggered by `webhook-events.fifo` and is the only component with Postgres credentials. It has no public internet egress; SQS is reached via a VPC Interface Endpoint.
+
+7. Read message. Bind `correlation_id` from `MessageAttributes` to log context.
+8. INSERT into `webhook_events` with `ON CONFLICT (tenant_id, event_id) DO NOTHING`, using `received_at` from the envelope. On conflict, increment `webhook_duplicate_count`, return success (SQS deletes the message).
+9. Begin DB transaction. Acquire `SELECT ... FOR UPDATE` on the `orders` row.
+10. **Primary idempotency guard.** Determine if the event's intended transition has already been applied:
+    - `payment.captured`: skip if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed', 'refunded')` AND a captured `payments` row exists for this `razorpay_payment_id`.
+    - `payment.authorized`: skip if `order.status IN ('authorized', 'paid', 'fulfilled', 'fulfillment_failed', 'refunded')`.
+    - `payment.failed`: skip if `order.status IN ('failed', 'refunded')`. No-op (mark `done`) if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed')`.
+    - `refund.processed`: skip if `order.status = 'refunded'`.
+
+    On skip, mark `webhook_events.processing_status = 'done'`, commit, return success.
+11. Assert `event_amount == order.amount` for capture and authorize events. On mismatch, set `processing_status='failed'`, alert, return success (do not raise; the SQS message is consumed, the row records the failure for replay).
+12. Execute the state transition via `OrderService.transition` (Section 4). Insert payment row only for terminal payment outcomes (`captured`, `failed`). Refunds UPDATE the existing captured `payments` row to `status='refunded'` and INSERT a row into `refunds`. Insert `order_events` for every transition.
+13. Commit the transaction.
+14. On a successful `paid` transition, publish to `fulfillment-queue.fifo` with `MessageGroupId=order_id` and `correlation_id` in `MessageAttributes`.
+15. Return success. SQS deletes the `webhook-events.fifo` message.
+
+**Producer-to-consumer latency budget.** Producer p99 is target < 100 ms (signature verify + SQS publish). Consumer p99 < 500 ms. End-to-end webhook-to-`paid` is well inside the polling client's 2-second interval.
+
+**Razorpay 500 ms SLA.** Bounded by producer latency only. The consumer's runtime is invisible to Razorpay.
 
 #### Route: `GET /payments/orders/{order_id}`
 
@@ -646,8 +665,11 @@ sequenceDiagram
     participant Widget
     participant API
     participant RZP as Razorpay
+    participant WP as Webhook Producer
+    participant WQ as webhook-events.fifo
+    participant WC as Webhook Consumer
     participant DB
-    participant SQS as SQS FIFO Queue
+    participant FQ as fulfillment-queue.fifo
     participant Fulfill as Fulfillment Lambda
 
     RZP-->>Browser: Client callback
@@ -657,28 +679,32 @@ sequenceDiagram
     API->>DB: SELECT order
     API-->>Widget: verified true
 
-    RZP->>API: POST /payments/webhook payment.captured
-    API->>API: Generate correlation_id, lookup tenant config
-    API->>API: verify_webhook_signature
-    API->>DB: INSERT webhook_events ON CONFLICT DO NOTHING
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: SELECT orders FOR UPDATE
-    API->>DB: Primary idempotency guard
+    RZP->>WP: POST /payments/webhook payment.captured
+    WP->>WP: Generate correlation_id, lookup tenant config
+    WP->>WP: verify_webhook_signature
+    WP->>WQ: SendMessage groupId=razorpay_order_id, attrs.correlation_id
+    WP-->>RZP: 200 queued
+
+    WQ->>WC: Deliver message
+    WC->>DB: INSERT webhook_events ON CONFLICT DO NOTHING
+    WC->>DB: BEGIN TRANSACTION
+    WC->>DB: SELECT orders FOR UPDATE
+    WC->>WC: Primary idempotency guard
     alt logical duplicate
-        API->>DB: webhook_events done
-        API->>DB: COMMIT
-        API-->>RZP: 200 queued
+        WC->>DB: webhook_events done
+        WC->>DB: COMMIT
+        WC-->>WQ: ack
     else proceed
-        API->>DB: Assert event_amount equals order amount
-        API->>DB: UPDATE orders attempted to paid
-        API->>DB: INSERT payments is_authoritative true
-        API->>DB: INSERT order_events
-        API->>DB: COMMIT
-        API->>SQS: SendMessage with correlation_id attribute
-        API-->>RZP: 200 queued
+        WC->>DB: Assert event_amount equals order amount
+        WC->>DB: UPDATE orders attempted to paid
+        WC->>DB: INSERT payments is_authoritative true
+        WC->>DB: INSERT order_events
+        WC->>DB: COMMIT
+        WC->>FQ: SendMessage with correlation_id attribute
+        WC-->>WQ: ack
     end
 
-    SQS->>Fulfill: order_id, tenant_id, correlation_id
+    FQ->>Fulfill: order_id, tenant_id, correlation_id
     Fulfill->>DB: SELECT order FOR UPDATE
     alt order already fulfilled
         Fulfill->>Fulfill: Short-circuit, no hook call
@@ -763,29 +789,35 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant RZP as Razorpay
-    participant API
+    participant WP as Webhook Producer
+    participant WQ as webhook-events.fifo
+    participant WC as Webhook Consumer
     participant DB
 
-    RZP->>API: POST /payments/webhook event_id A payment.captured
-    API->>DB: INSERT webhook_events event_id A
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: SELECT orders FOR UPDATE
-    API->>DB: UPDATE orders attempted to paid
-    API->>DB: INSERT payments razorpay_payment_id P1
-    API->>DB: COMMIT
-    API-->>RZP: 200 queued
+    RZP->>WP: POST event_id A payment.captured
+    WP->>WQ: SendMessage dedup=tenant:A
+    WP-->>RZP: 200 queued
+    WQ->>WC: Deliver A
+    WC->>DB: INSERT webhook_events event_id A
+    WC->>DB: BEGIN, SELECT FOR UPDATE, UPDATE orders to paid
+    WC->>DB: INSERT payments razorpay_payment_id P1, COMMIT
+    WC-->>WQ: ack
 
     Note over RZP: Razorpay retries with new event_id, same payment_id
 
-    RZP->>API: POST /payments/webhook event_id B payment.captured P1
-    API->>DB: INSERT webhook_events event_id B succeeds
-    API->>DB: BEGIN TRANSACTION
-    API->>DB: SELECT orders FOR UPDATE status paid
-    API->>DB: Primary guard fires (status at or past paid)
-    API->>DB: UPDATE webhook_events done note duplicate_payment_id
-    API->>DB: COMMIT
-    API-->>RZP: 200 queued
+    RZP->>WP: POST event_id B payment.captured P1
+    WP->>WQ: SendMessage dedup=tenant:B
+    WP-->>RZP: 200 queued
+    WQ->>WC: Deliver B
+    WC->>DB: INSERT webhook_events event_id B succeeds
+    WC->>DB: BEGIN, SELECT FOR UPDATE (status paid)
+    WC->>DB: Primary guard fires (status at or past paid)
+    WC->>DB: UPDATE webhook_events done note duplicate_payment_id
+    WC->>DB: COMMIT
+    WC-->>WQ: ack
 ```
+
+**SQS dedup vs. application dedup.** `MessageDeduplicationId=f"{tenant_id}:{event_id}"` suppresses Razorpay's literal duplicates (same `event_id`) within the 5-minute FIFO dedup window before they reach the consumer. The application's `webhook_events` UNIQUE constraint catches duplicates outside that window. The event-type-aware primary guard catches Razorpay retries with a **new** `event_id` for the **same** payment, which SQS dedup cannot detect.
 
 ### 5.6 Refund Processed
 
@@ -895,39 +927,93 @@ sequenceDiagram
 | **Unknown tenant_id on webhook route** | `TenantConfigRegistry.get(tenant_id)` returns `None` | Return `400 Bad Request`. Do not persist event. | Operator verifies tenant registration. |
 | **Refund processed by Razorpay dashboard** | `refund.processed` webhook | Update payment to `status=refunded`, insert `refunds` row, transition order to `refunded`. | Transparent. |
 | **Refund event for unknown payment** | `refund.processed` arrives but `razorpay_payment_id` not in local `payments` | Set `processing_status='failed'`, alert. Indicates webhook delivery gap. | Run `/reconcile`, then `/admin/events/{id}/replay`. |
+| **Producer SQS publish failure** | `boto3.exceptions.Boto3Error` on `SendMessage` | Return `503` to Razorpay. No DB writes occurred. Razorpay retries. | Transparent. SQS endpoint outage is rare and resolves quickly. |
+| **Webhook Consumer DB outage** | Consumer raises on transaction begin or commit | SQS retries with backoff (`maxReceiveCount=5`). | Razorpay already received `200 queued`; SQS holds the message. Resume DB; the queue drains. |
+| **Webhook Consumer exhausts retries** | `attempts >= maxReceiveCount` | Message moves to `webhook-events-dlq.fifo`. DLQ-poller marks `webhook_events.processing_status='dead'` (or inserts a stub row if the consumer never reached the fast-path INSERT). CloudWatch alarm on DLQ depth > 0. | Fix root cause, then `POST /admin/events/{id}/replay`. |
+| **Consumer cold start with VPC ENI attach** | First invocation after long idle | ENI attach adds ~1 second to cold start. Consumer is event-driven, Razorpay is not waiting. | None; producer's 200 already returned. |
 
 ---
 
 ## 7. Webhook and Fulfillment Architecture
 
-Two AWS Lambda functions connected by an SQS FIFO queue (`fulfillment-queue.fifo`).
+Three AWS Lambda functions connected by two SQS FIFO queues. The split between **Webhook Producer** and **Webhook Consumer** is a deliberate security and cost-floor decision: the public-facing Lambda holds no database credentials, and the database-facing Lambda has no public internet egress. This eliminates the future NAT Gateway cost (~$32/month) when Postgres migrates to a private VPC subnet, and keeps the security boundary tight from day one.
 
-### Webhook Lambda
+```
+Razorpay ──(HTTPS)──> Webhook Producer ──> webhook-events.fifo ──> Webhook Consumer ──> Postgres
+  (public)                (public)              (FIFO)                 (private VPC)
+                                                                            │
+                                                                            ▼
+                                                                    fulfillment-queue.fifo
+                                                                            │
+                                                                            ▼
+                                                                   Fulfillment Lambda (private VPC)
+                                                                            │
+                                                                            ▼
+                                                                       FulfillmentHook
+```
 
-Triggered by `POST /payments/webhook/{tenant_id}`.
+### Webhook Producer Lambda (public, no VPC)
+
+Triggered by `POST /payments/webhook/{tenant_id}` via API Gateway.
 
 - Generates `correlation_id` on every request.
 - Resolves tenant configuration from `TenantConfigRegistry`.
 - Verifies the Razorpay signature.
-- Executes all DB state transitions synchronously within the request/response cycle.
-- On a successful `paid` transition, publishes to `fulfillment-queue.fifo` with `MessageGroupId=order_id` and `MessageAttributes.correlation_id`.
+- Fast-parses the payload to extract `event_id`, `event`, and `razorpay_order_id`.
+- Publishes to `webhook-events.fifo` with `MessageGroupId=razorpay_order_id`, `MessageDeduplicationId=f"{tenant_id}:{event_id}"`, and `correlation_id` in `MessageAttributes`.
 - Returns `200 queued` to Razorpay in under 500 ms.
 
-The Webhook Lambda does not invoke `FulfillmentHook` and does not schedule background tasks. Razorpay enforces a 500 ms response SLA and deactivates endpoints that exceed it. SQS publish p50 is 10 to 30 ms.
+The producer **does not** touch Postgres, **does not** invoke `FulfillmentHook`, **does not** schedule background tasks, and **does not** hold IAM permission to reach any data store other than SQS. Razorpay enforces a 500 ms response SLA. SQS publish p50 is 10 to 30 ms; signature verify is sub-millisecond.
 
-### Fulfillment Lambda
+### Webhook Consumer Lambda (private VPC)
 
-Separate function. Event source is the SQS queue.
+Event source is `webhook-events.fifo`. The function lives in private subnets with no internet route and reaches SQS, Secrets Manager, and CloudWatch via VPC Interface Endpoints.
+
+- Reads message, binds `correlation_id`.
+- Fast-path dedup via `INSERT INTO webhook_events ... ON CONFLICT (tenant_id, event_id) DO NOTHING` using `received_at` from the message envelope.
+- Begins DB transaction, acquires `SELECT ... FOR UPDATE` on the order.
+- Runs the event-type-aware primary idempotency guard (Section 2.1 and `.claude/rules/webhook-idempotency.md`).
+- Asserts amount on capture/authorize events.
+- Executes the state transition. INSERTs `payments` rows on terminal payment outcomes. INSERTs `refunds` rows on refund events. INSERTs an `order_events` row for every transition.
+- Commits.
+- On `paid` transitions, publishes to `fulfillment-queue.fifo`.
+- Returns success to SQS, which deletes the message.
+
+On unhandled exception, SQS retries via `maxReceiveCount=5`. After exhaustion, the message moves to `webhook-events-dlq.fifo`. A scheduled DLQ-poller transitions affected `webhook_events` to `processing_status='dead'` and emits `dead_event_count`.
+
+### Fulfillment Lambda (private VPC)
+
+Event source is `fulfillment-queue.fifo`. Same VPC and endpoint posture as the consumer.
 
 - Receives `{order_id, tenant_id}` in the body and `correlation_id` in MessageAttributes.
-- Acquires `SELECT order FOR UPDATE`. **Short-circuit:** if `order.status = 'fulfilled'`, mark `webhook_events.processing_status = 'done'`, commit, and return without invoking the hook. This handles interleaved SQS deliveries where the first completes before the second is consumed.
+- Acquires `SELECT order FOR UPDATE`. **Short-circuit:** if `order.status = 'fulfilled'`, commit and return without invoking the hook. This handles interleaved SQS deliveries where the first completes before the second is consumed.
 - Otherwise calls `FulfillmentHook.fulfill(order_id, tenant_id, amount, metadata={"correlation_id": ...})`.
 - On success: `UPDATE orders SET status='fulfilled', fulfilled_at=NOW()`. INSERT `order_events`. UPDATE `webhook_events`.
 - On exception: re-raise. SQS retries via `maxReceiveCount=5`. After exhaustion, the message moves to `fulfillment-dlq.fifo` and a scheduled Lambda transitions the order to `fulfillment_failed`.
 
-### Dual-Write Safety Net
+### Network Topology
 
-The Webhook Lambda commits to the DB before publishing to SQS. If SQS publish fails after commit, the order stays in `paid` with no in-flight fulfillment message. A scheduled Lambda runs every minute:
+The producer-consumer split is permanent. VPC placement is **tier-dependent** so the Free Track pays nothing for network infrastructure.
+
+| Component | Free Track | Paid Track / RDS-in-VPC |
+|---|---|---|
+| **Webhook Producer** | Public, no VPC | Public, no VPC, optional WAF |
+| **Webhook Consumer** | **Public, no VPC** (reaches Neon and SQS via internet, TLS) | Private VPC, reaches SQS via Interface Endpoint |
+| **Fulfillment Lambda** | **Public, no VPC** | Private VPC, reaches SQS via Interface Endpoint |
+| **Stale-paid monitor, keep-alive, authorized monitor** | **Public, no VPC** | Private VPC |
+| **VPC Interface Endpoints** | **None** | SQS, Secrets Manager, Logs, Monitoring |
+| **NAT Gateway** | None | None (Interface Endpoints replace it) |
+| **Fixed monthly network cost** | **$0** | ~$15 to $50 (endpoint hours + data) |
+
+**Free Track network posture.** All Lambdas run in the default AWS Lambda networking (public egress). Postgres lives on Neon, reachable over the public internet with TLS. SQS is reached over the same path. The security perimeter is the **IAM scope per Lambda** plus **TLS in transit** plus **credentials in SSM Parameter Store SecureString**, not network isolation. Trade-off accepted: a compromised consumer or fulfillment Lambda could exfiltrate data over the public internet. Mitigation: tight IAM, no internet egress permissions beyond what each function actually uses (boto3 default), and credential redaction in logs (enforced by the secrets-in-logs regression test).
+
+**Paid Track / RDS-in-VPC posture.** Producer stays public (it must reach Razorpay). Consumer and Fulfillment move into private subnets and reach SQS via a `com.amazonaws.<region>.sqs` VPC Interface Endpoint. Same for `secretsmanager`, `logs`, `monitoring`. No NAT Gateway is provisioned in either track.
+
+**Switching tracks is a CDK diff, not a re-architecture.** The application code is identical across tiers. The CDK construct that wraps the consumer and fulfillment functions takes a `vpc: ec2.IVpc | None` parameter. Pass `None` for Free Track, pass the `RazorpayNetwork.vpc` for Paid Track.
+
+### Safety Net: SQS Publish Failure From Consumer
+
+The Webhook Consumer commits to the DB before publishing to `fulfillment-queue.fifo`. If that publish fails, the order stays in `paid` with no in-flight fulfillment message. A scheduled Lambda runs every minute:
 
 ```sql
 SELECT id, tenant_id FROM orders
@@ -935,13 +1021,18 @@ WHERE status = 'paid' AND paid_at < NOW() - INTERVAL '5 minutes'
 LIMIT 100;
 ```
 
-CloudWatch alarm fires on any result. Operator uses `POST /admin/orders/{order_id}/retry-fulfillment`. At the v1 target volume of 1,000 payments per month, this safety net is sufficient. Migration to a transactional outbox is recorded as a v2 scaling trigger (Section 16).
+CloudWatch alarm fires on any result. Operator uses `POST /admin/orders/{order_id}/retry-fulfillment`. Migration to a transactional outbox is recorded as a v2 scaling trigger (Section 16).
+
+### Safety Net: Producer-to-Consumer Gap
+
+If the producer enqueues but the consumer never processes (consumer disabled, SQS endpoint outage, sustained DB outage exhausting retries), the message lands in `webhook-events-dlq.fifo`. A scheduled DLQ-poller transitions affected events to `processing_status='dead'` and emits `dead_event_count`. Recovery: fix root cause, then `POST /admin/events/{event_id}/replay` after the DLQ-poller has persisted the row.
 
 ### Scaling Triggers (Upgrade to SQS Standard plus Fan-out)
 
-1. Fulfillment p95 latency exceeds 30s for 1 hour (FIFO throughput per `MessageGroupId` is one message at a time).
-2. DLQ depth exceeds 100 sustained for more than 1 hour.
+1. Webhook Consumer p95 exceeds 30s for 1 hour (FIFO throughput per `MessageGroupId` is one message at a time).
+2. Either DLQ depth exceeds 100 sustained for more than 1 hour.
 3. A fulfillment side-effect requires fan-out to multiple downstream systems.
+4. Cross-order ordering becomes a requirement (currently we only guarantee per-order ordering via `MessageGroupId=razorpay_order_id`).
 
 ---
 
@@ -1119,12 +1210,14 @@ class FulfillmentHook(Protocol):
 **Critical Alerts (PagerDuty):**
 
 - `fulfillment-dlq.fifo` depth > 0.
+- `webhook-events-dlq.fifo` depth > 0.
 - `webhook_events.processing_status = 'dead'` count > 0.
 - `webhook_events.processing_status = 'failed'` AND `attempts >= 3` AND `received_at < 1hr ago` count > 0 for >30 min.
 - Orders in `paid` for > 5 minutes with no SQS message in flight.
 - Orders in `authorized` for > 24h.
 - Orders transitioned to `fulfillment_failed` in the last hour.
 - DB connection pool exhaustion.
+- `webhook_publish_failures` rate > 1% over 5 min (producer cannot enqueue).
 
 **Warning Alerts (Slack):**
 
@@ -1139,16 +1232,28 @@ class FulfillmentHook(Protocol):
 
 **Metrics (`telemetry.py`):**
 
-- `webhook_duplicate_count`
-- `order_state_transition_count{from,to}`
-- `fulfillment_duration_ms`
-- `fulfillment_sqs_publish_failures`
-- `reconciliation_mismatch_count{reason}`
-- `cold_start_ms`
-- `dead_event_count`
-- `webhook_latency_ms`
+Emitted from the producer:
+
+- `webhook_latency_ms` (producer entry to 200 response)
+- `webhook_publish_failures` (SQS `SendMessage` errors)
 - `payment_authorized_count`
 - `tenant_lookup_failures`
+
+Emitted from the consumer:
+
+- `webhook_duplicate_count` (fast-path `ON CONFLICT` hits + primary-guard duplicate-payment hits)
+- `webhook_consumer_duration_ms` (message receive to ack)
+- `order_state_transition_count{from,to}`
+- `reconciliation_mismatch_count{reason}` (also emitted by the reconcile job)
+- `dead_event_count` (DLQ-poller flagging `processing_status='dead'`)
+
+Emitted from the Fulfillment Lambda:
+
+- `fulfillment_duration_ms`
+- `fulfillment_sqs_publish_failures` (publish from Webhook Consumer to fulfillment-queue.fifo)
+- `cold_start_ms`
+
+**Free-tier custom metric cap.** AWS Free Tier includes 10 custom metrics. The list above has 12 distinct metric names. Consolidate by dropping `payment_authorized_count` (replaceable by `order_state_transition_count{to=authorized}`) and `tenant_lookup_failures` (replaceable by a CloudWatch Logs metric filter on the producer's WARN log line). Documented promotion: once Paid Track is provisioned, restore all 12 and pay for the surplus (~$0.30/metric/month).
 
 ---
 
@@ -1261,3 +1366,6 @@ The simulator computes `HMAC-SHA256(webhook_secret, body)` and POSTs with header
 | **SQS Standard plus SNS fan-out** | FIFO is v1. | Section 7 scaling triggers. |
 | **HTTP `Idempotency-Key` header** | Body `receipt` is the idempotency key. | Public API consumer requirement. |
 | **Vendor-agnostic schema column naming** | `razorpay_*` prefixes retained. | Multi-gateway support. |
+| **VPC placement of Consumer and Fulfillment Lambdas** | Both run public on Free Track. Producer-consumer split provides the security boundary; network isolation does not. | RDS-in-VPC migration OR Paid Track provisioned OR external compliance requirement (PCI scope expansion). |
+| **VPC Interface Endpoints (SQS, Secrets Manager, Logs, Monitoring)** | None. Lambdas reach AWS services via public APIs. | Same trigger as VPC placement above. |
+| **Lambda Power Tuning** | Static memory: Producer 512 MB, Consumer 1024 MB, Fulfillment 1024 MB, monitors 256 MB. | Sustained webhook p95 > 800 ms OR fulfillment p95 > 2 s OR cost per invocation > $0.0005. Then run AWS Lambda Power Tuner against production traffic samples and adjust. |

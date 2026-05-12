@@ -43,6 +43,9 @@ packages = ["razorpay_checkout"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
+markers = [
+    "requires_db: integration test that needs a live Postgres reachable via DATABASE_URL",
+]
 
 [tool.ruff]
 line-length = 100

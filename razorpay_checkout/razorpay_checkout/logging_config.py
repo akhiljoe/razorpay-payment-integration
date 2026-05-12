@@ -108,4 +108,7 @@ def configure_logging(level: str | int | None = None) -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return a structlog logger bound to `name` (defaults to caller's module)."""
-    return structlog.get_logger(name if name else "razorpay_checkout")
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(
+        name if name else "razorpay_checkout"
+    )
+    return logger

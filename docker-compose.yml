@@ -21,7 +21,7 @@ services:
     image: localstack/localstack:3.7
     container_name: razorpay-localstack
     environment:
-      SERVICES: "sqs,lambda,logs,secretsmanager,events,iam,cloudwatch,sts"
+      SERVICES: "sqs,lambda,logs,secretsmanager,ssm,events,iam,cloudwatch,sts"
       DEFAULT_REGION: "ap-south-1"
       DEBUG: "0"
       DOCKER_HOST: "unix:///var/run/docker.sock"

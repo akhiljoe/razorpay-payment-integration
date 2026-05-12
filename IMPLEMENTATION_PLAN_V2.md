@@ -138,39 +138,60 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 
 ---
 
-## Phase: Webhook Pipeline
+## Phase: Webhook Producer (Public Lambda)
 
-> Depends on: order service.
+> Depends on: order service. The producer is a thin, public-facing handler that verifies the Razorpay signature and enqueues to `webhook-events.fifo`. It holds no DB credentials and performs zero DB I/O.
 
-- [ ] **What:** Implement the SQS FIFO publisher and queue bootstrap helpers for LocalStack.
-  **Output:** `razorpay_checkout/razorpay_checkout/queue.py`; `aws --endpoint-url http://localhost:4566 sqs list-queues` shows `fulfillment-queue.fifo` and `fulfillment-dlq.fifo` after `ensure_fulfillment_queue()`.
+- [ ] **What:** Implement the SQS FIFO publisher and bootstrap helpers for both queues on LocalStack.
+  **Output:** `razorpay_checkout/razorpay_checkout/queue.py` with `publish_webhook_event(...)` and `publish_fulfillment_message(...)`; `aws --endpoint-url http://localhost:4566 sqs list-queues` shows `webhook-events.fifo`, `webhook-events-dlq.fifo`, `fulfillment-queue.fifo`, `fulfillment-dlq.fifo`.
 
-- [ ] **What:** Implement the `WebhookProcessor` skeleton with tenant lookup, signature verification, fast-path dedup, and transaction shell.
-  **Output:** `razorpay_checkout/razorpay_checkout/webhooks.py`; tests confirm unknown-tenant raises, signature mismatch raises, duplicate `event_id` short-circuits with metric increment.
+- [ ] **What:** Implement `WebhookProducer.process` with tenant lookup, signature verification, payload pre-parse, and SQS publish.
+  **Output:** `razorpay_checkout/razorpay_checkout/webhook_producer.py`; tests confirm unknown-tenant returns 400, signature mismatch returns 400, malformed JSON returns 400, valid event yields one SQS message with `MessageGroupId=razorpay_order_id`, `MessageDeduplicationId=f"{tenant_id}:{event_id}"`, and `MessageAttributes.correlation_id`.
+
+- [ ] **What:** Register `POST /payments/webhook/{tenant_id}` as the producer entry point.
+  **Output:** Route registered; manual simulator POST against the running app returns 200 in under 100 ms (p99 budget); raw payload appears on the queue verbatim.
+
+- [ ] **What:** Add a no-DB-access assertion test for the producer.
+  **Output:** `tests/test_webhook_producer.py` patches the asyncpg pool factory to raise on use; producer happy-path test still passes, proving the producer never opens a DB connection.
+
+**Phase gate.** Producer suite green; signed simulator events land on `webhook-events.fifo` with correct attributes; producer code path opens zero DB connections.
+**Commit:** `git commit -m "webhook-producer: signature verify, payload pre-parse, SQS publish, no DB access"`
+
+---
+
+## Phase: Webhook Consumer (VPC Lambda)
+
+> Depends on: producer phase. The consumer is the only component with Postgres credentials. Triggered by `webhook-events.fifo`. Runs all DB transitions and decides whether to publish to `fulfillment-queue.fifo`.
+
+- [ ] **What:** Implement the `WebhookConsumer` skeleton with envelope parsing, correlation-id rebinding, and the DB transaction shell.
+  **Output:** `razorpay_checkout/razorpay_checkout/lambdas/webhook_consumer.py`; tests confirm a valid SQS record triggers `BEGIN`, `SELECT ... FOR UPDATE`, and `COMMIT` calls in order.
+
+- [ ] **What:** Implement the consumer's fast-path dedup using the envelope `received_at`.
+  **Output:** `INSERT INTO webhook_events ... ON CONFLICT (tenant_id, event_id) DO NOTHING` uses producer-supplied `received_at`; duplicate-event test increments `webhook_duplicate_count` and acks the SQS message without further work.
 
 - [ ] **What:** Implement the event-type-aware primary idempotency guard per `.claude/rules/webhook-idempotency.md`.
-  **Output:** `should_skip` function and `SkipDecision` enum in the same module; parametrized test matrix over `(event_type, order_status, captured_payment_exists)` covers every row in DESIGN Section 2.1 step 6.
+  **Output:** `should_skip` function and `SkipDecision` enum in `webhook_idempotency.py`; parametrized test matrix over `(event_type, order_status, captured_payment_exists)` covers every row in DESIGN Section 2.1 step 10.
 
 - [ ] **What:** Implement `handle_payment_authorized` with amount assertion and no payments-row insert.
-  **Output:** Handler integrated into the dispatcher; simulator-driven test transitions `attempted -> authorized`, writes one `order_events` row, leaves `payments` empty, publishes nothing to SQS.
+  **Output:** Handler integrated into the consumer dispatcher; simulator-driven test transitions `attempted -> authorized`, writes one `order_events` row, leaves `payments` empty, publishes nothing to `fulfillment-queue.fifo`.
 
-- [ ] **What:** Implement `handle_payment_captured` covering `failed -> attempted -> paid`, payments row insert with `is_authoritative=TRUE`, and SQS publish after commit.
-  **Output:** Handler integrated; three tests pass for single-edge `attempted -> paid`, two-edge `failed -> attempted -> paid`, and SQS-failure-after-commit (order stays `paid`).
+- [ ] **What:** Implement `handle_payment_captured` covering `failed -> attempted -> paid`, payments row insert with `is_authoritative=TRUE`, and fulfillment SQS publish after commit.
+  **Output:** Handler integrated; three tests pass for single-edge `attempted -> paid`, two-edge `failed -> attempted -> paid`, and fulfillment-SQS-failure-after-commit (order stays `paid`, consumer still acks `webhook-events.fifo`).
 
 - [ ] **What:** Implement `handle_payment_failed` with stale-event no-op and `is_authoritative=FALSE` payments row.
   **Output:** Handler integrated; tests pass for `attempted -> failed` and stale-failed no-op on `paid`.
 
-- [ ] **What:** Implement `handle_refund_processed` that UPDATEs the captured payments row and INSERTs into `refunds`.
+- [ ] **What:** Implement `handle_refund_processed` updating the captured payments row and inserting into `refunds`.
   **Output:** Handler integrated; tests pass for `paid -> refunded`, `fulfilled -> refunded`, `fulfillment_failed -> refunded`, and unknown-payment refund flagged `processing_status='failed'`.
 
 - [ ] **What:** Implement `handle_order_paid` as a log-only event.
   **Output:** Handler integrated; test confirms zero state change and one INFO log line.
 
-- [ ] **What:** Register `POST /payments/webhook/{tenant_id}` resolving tenant strictly from the path parameter.
-  **Output:** Route registered; manual simulator POST against the running app returns 200 in under 500 ms; unknown-tenant POST returns 400 without persisting a `webhook_events` row.
+- [ ] **What:** Implement the `webhook-events-dlq.fifo` poller.
+  **Output:** `razorpay_checkout/razorpay_checkout/lambdas/webhook_events_dlq_poller.py`; test confirms an exhausted message lands in DLQ, the poller writes a `webhook_events` row with `processing_status='dead'`, and `dead_event_count` increments.
 
-**Phase gate.** Full webhook suite green; LocalStack SQS receives messages with `correlation_id` in `MessageAttributes`; manual SQS-down test shows order stays `paid` with no message published.
-**Commit:** `git commit -m "webhooks: tenant lookup, idempotency guards, event handlers, SQS publish after commit"`
+**Phase gate.** Consumer suite green; LocalStack triggers the consumer Lambda from `webhook-events.fifo`; `correlation_id` propagates from producer through consumer logs; DLQ poller marks dead events correctly.
+**Commit:** `git commit -m "webhook-consumer: dedup, idempotency guard, event handlers, DLQ poller"`
 
 ---
 
@@ -361,11 +382,26 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 - [ ] **What:** Initialize the Python CDK project under `infra/` with both stacks listed.
   **Output:** `infra/app.py`, `infra/cdk.json`, `infra/requirements.txt`; `cdk list` outputs `razorpay-free-dev` and `razorpay-paid-prod`.
 
-- [ ] **What:** Implement `FreeStack` with SQS FIFO + DLQ, six Lambda functions, HttpApi routes, schedules, log groups, and alarms.
-  **Output:** `infra/stacks/free_stack.py`; `cdk synth razorpay-free-dev` succeeds; synthesized template contains six Lambda functions and two FIFO queues.
+- [ ] **What:** Implement `FreeStack` with all Lambdas as public (no VPC) and credentials sourced from SSM Parameter Store SecureString.
+  **Output:** `infra/stacks/free_stack.py`; `cdk synth razorpay-free-dev` succeeds; synthesized template contains exactly eight Lambda functions (Webhook Producer, Webhook Consumer, Webhook DLQ poller, Fulfillment, Fulfillment DLQ poller, stale-paid monitor, authorized monitor, keep-alive), four SQS FIFO queues (`webhook-events.fifo` + DLQ, `fulfillment-queue.fifo` + DLQ), **zero VPC resources**, and **zero Interface Endpoints**. Free Track fixed network cost is $0.
 
-- [ ] **What:** Implement `PaidStack` adding provisioned concurrency on the webhook Lambda, WAFv2, 30-day log retention, and the ADOT layer with `OTEL_EXPORTER=xray`.
-  **Output:** `infra/stacks/paid_stack.py`; `cdk synth razorpay-paid-prod` succeeds; template includes `ProvisionedConcurrentExecutions`.
+- [ ] **What:** Wire the Webhook Producer with IAM scoped to `webhook-events.fifo:SendMessage` and `ssm:GetParameter` for the per-tenant secret path only.
+  **Output:** Producer function has no `vpc` property; synthesized IAM policy is exactly those two actions; a CDK assertion test confirms the producer cannot read `payments` table parameters or any DB connection string.
+
+- [ ] **What:** Wire the Webhook Consumer with IAM scoped to `webhook-events.fifo:Receive*/Delete*`, `fulfillment-queue.fifo:SendMessage`, `ssm:GetParameter` for DB and Razorpay creds.
+  **Output:** Consumer function on Free Track has no `vpc` property. Tier-specific code paths use a single `make_consumer_function(scope, *, vpc=None)` factory that branches on the `vpc` argument.
+
+- [ ] **What:** Set Lambda memory per function with rationale embedded in CDK comments.
+  **Output:** Producer 512 MB (signature verify + SQS publish inside the 500 ms SLA), Consumer 1024 MB (DB roundtrip), Fulfillment 1024 MB (hook + DB), monitors and keep-alive 256 MB (cheap, infrequent). Settings are constants in `infra/stacks/lambda_sizing.py` re-used by FreeStack and PaidStack.
+
+- [ ] **What:** Define a `RazorpayNetwork` construct that is only used by PaidStack.
+  **Output:** `infra/stacks/network.py` exports a `RazorpayNetwork(scope, id)` construct with one VPC, two AZs of private subnets, no NAT Gateway, and four Interface Endpoints (SQS, Secrets Manager, Logs, Monitoring). Imported only by `paid_stack.py`. `cdk synth razorpay-free-dev` does not instantiate this construct.
+
+- [ ] **What:** Implement `PaidStack` adding the VPC (via `RazorpayNetwork`), provisioned concurrency on the Producer, WAFv2 on the HttpApi, 30-day log retention, and the ADOT layer on Consumer/Fulfillment with `OTEL_EXPORTER=xray`.
+  **Output:** `infra/stacks/paid_stack.py`; `cdk synth razorpay-paid-prod` succeeds. Synthesized template includes `AWS::EC2::VPC`, four `AWS::EC2::VPCEndpoint` resources, `ProvisionedConcurrentExecutions` on the producer, the ADOT layer ARN on the VPC-bound functions, and a WAF web ACL associated with the HttpApi.
+
+- [ ] **What:** Author a "**switching tracks**" runbook documenting the CDK changes needed to migrate Consumer and Fulfillment from public to VPC.
+  **Output:** `runbooks/10_switch_to_paid_track.md` lists: deploy `PaidStack`, update `vpc=` argument on consumer and fulfillment factories, redeploy, verify cold-start latency and DLQ depth before flipping DNS or HttpApi alias. Application code requires zero changes.
 
 - [ ] **What:** Add CDK construct tests asserting resource counts and properties.
   **Output:** `infra/tests/test_free_stack.py` and `test_paid_stack.py`; `pytest infra/tests` green without AWS credentials.
@@ -394,7 +430,10 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 - [ ] **What:** Execute the live Razorpay test-mode end-to-end flow via the developer test page pointed at the deployed API.
   **Output:** Test page reaches `Fulfilled` within 30 seconds; CloudWatch logs show matching `correlation_id` end-to-end.
 
-**Phase gate.** Live happy path complete; alarm wiring confirmed; Logs Insights returns the full trace.
+- [ ] **What:** Run AWS Lambda Power Tuner against the Webhook Producer and Webhook Consumer to validate the chosen memory settings.
+  **Output:** Power Tuner produces a cost-vs-latency curve per function. Committed report at `infra/power_tuning/<function>-<date>.json`. Adjustments to `infra/stacks/lambda_sizing.py` only if Power Tuner shows > 20% cost-per-invocation improvement at a different memory tier. Free Track default sizing (Producer 512 MB, Consumer 1024 MB) stays unless evidence says otherwise.
+
+**Phase gate.** Live happy path complete; alarm wiring confirmed; Logs Insights returns the full trace; Power Tuner reports archived.
 **Commit:** `git commit -m "deploy: razorpay-free-dev validated end-to-end on aws"`
 
 ---
@@ -435,3 +474,79 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 | SQS FIFO per-group throttling | LocalStack does not enforce 1/s per group | Post-deploy load test |
 | Secrets Manager rotation | LocalStack does not run rotation Lambdas | Runbook 7 dry-run post-deploy |
 | X-Ray sampling | LocalStack omits sampling | X-Ray console inspection post-deploy |
+
+## Cost Optimizations
+
+### CloudWatch Logs
+
+Free tier includes 5 GB of log ingestion and 5 GB of storage. Since you're using Phase 1's structured JSON logging, avoid over-logging in production — JSON is more verbose than plain text.
+
+> **The Fix:** In Phase 1's CDK code, explicitly set a `retention_days` property (e.g., `7` or `14` days) on your Log Groups to keep the storage bill at zero.
+
+---
+
+### Free Track: $0 Network Spend
+
+Free Track runs **all Lambdas public**, no VPC, no Interface Endpoints, no NAT Gateway. Network fixed cost is $0. The security perimeter is IAM scope per function + TLS in transit + secrets in SSM Parameter Store SecureString.
+
+| Item | Free Track | Paid Track / RDS-in-VPC | Notes |
+|---|---|---|---|
+| NAT Gateway | None | None | Replaced by Interface Endpoints in Paid Track. |
+| VPC Interface Endpoints | None | SQS, Secrets Manager, Logs, Monitoring | ~$7 to $15/mo per endpoint per AZ. |
+| Total monthly network fixed cost | **$0** | ~$15 to $50 | |
+| Switching effort | n/a | CDK diff: pass `vpc=` to consumer and fulfillment factories | No application code changes. |
+
+**Risk accepted on Free Track.** Consumer and Fulfillment Lambdas have DB credentials AND public internet egress. A code or IAM compromise could exfiltrate over the public path. Mitigations: tight IAM, no boto3 calls outside the allowed actions, secrets-in-logs regression test, no `subprocess` invocations in the application code, dependency pinning via `uv.lock`.
+
+**Promotion trigger for VPC adoption:** RDS-in-VPC migration OR Paid Track provisioned OR external compliance ask (PCI scope expansion). Recorded in `SCALE_PLAN.md`.
+
+---
+
+### Secrets Manager vs. SSM Parameter Store
+
+- **The Cost:** Secrets Manager bills $0.40 per secret per month. With four secrets per tenant (`key_secret`, `webhook_secret`, `webhook_secret_previous`, `admin_api_key`), 25 tenants = $40/month just for secrets.
+- **The Fix:** Use **SSM Parameter Store (`SecureString`)** for static credentials. Standard parameters are free, encrypted with the AWS-managed KMS key, and read at Lambda cold start the same way as Secrets Manager.
+- **Caveat to weigh:** Secrets Manager has built-in rotation hooks and Lambda integration that Parameter Store lacks. Runbook 7 (webhook secret rotation) is currently a manual procedure, which is fine for Parameter Store. If automated rotation becomes a requirement (e.g., for the Razorpay `key_secret`), promote the relevant secret back to Secrets Manager rather than rolling your own rotation Lambda.
+
+---
+
+### SQS Long Polling
+
+Ensure your consumer Lambda (Phase 13) uses **Long Polling** (`WaitTimeSeconds = 20`). This reduces the number of empty requests to SQS, keeping you well within the 1M free tier.
+
+---
+
+### ARM / Graviton2 Architecture
+
+In your CDK (Phase 13), set your Lambda functions to use the `ARM_64` architecture. It is **20% cheaper and faster** for Python than standard x86.
+
+> ⚠️ **Be careful** when switching architectures — ensure all compiled dependencies are compatible with ARM.
+
+---
+
+### Lambda Memory Sizing (Power Tuning)
+
+Python on the 128 MB default is slower **and** more expensive per request than 512 MB to 1024 MB. CPU scales linearly with memory; the cold start is dominated by interpreter startup and import time, both CPU-bound. Default values are set in `infra/stacks/lambda_sizing.py`:
+
+| Function | Memory | Rationale |
+|---|---|---|
+| Webhook Producer | 512 MB | Signature verify + SQS publish well inside 500 ms SLA. |
+| Webhook Consumer | 1024 MB | DB roundtrip benefits from more CPU. |
+| Fulfillment | 1024 MB | Hook + DB transaction; same reasoning. |
+| Monitors and keep-alive | 256 MB | Infrequent, simple queries. |
+
+**Validation step in the deployment phase:** run AWS Lambda Power Tuner against the producer and consumer with real production traffic samples. Adopt a different memory tier only if Power Tuner shows > 20% cost-per-invocation improvement. The chosen values land in `infra/stacks/lambda_sizing.py`.
+
+---
+
+### Log Level and Retention Strategy
+
+The `LOG_LEVEL` env var controls verbosity (already wired in `logging_config.py`). On Free Track, set the CloudWatch Log Group retention to **7 days** in CDK. This caps storage cost at zero regardless of log volume.
+
+Do **not** silence the payment success path in production. Auditability matters on a payment system; the 5 GB ingestion free tier covers ~50 million structured log lines, which is far more than v1 volume will produce.
+
+| Environment | LOG_LEVEL | Retention | Why |
+|---|---|---|---|
+| Local development | DEBUG | n/a | Full visibility while building. |
+| Free Track production | INFO | 7 days | Audit trail preserved; storage cost stays at $0. |
+| Paid Track production | INFO | 30 days | Forensic window extended for support tickets. |
