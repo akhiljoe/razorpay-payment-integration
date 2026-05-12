@@ -20,6 +20,7 @@ Final design. Single source of truth. Supersedes all prior revisions.
 14. [Test Strategy](#14-test-strategy)
 15. [Local Development and Webhook Simulation](#15-local-development-and-webhook-simulation)
 16. [Out of Scope for v1 and Scaling Triggers](#16-out-of-scope-for-v1-and-scaling-triggers)
+17. [Implementation Notes and Gotchas](#17-implementation-notes-and-gotchas)
 
 ---
 
@@ -1369,3 +1370,125 @@ The simulator computes `HMAC-SHA256(webhook_secret, body)` and POSTs with header
 | **VPC placement of Consumer and Fulfillment Lambdas** | Both run public on Free Track. Producer-consumer split provides the security boundary; network isolation does not. | RDS-in-VPC migration OR Paid Track provisioned OR external compliance requirement (PCI scope expansion). |
 | **VPC Interface Endpoints (SQS, Secrets Manager, Logs, Monitoring)** | None. Lambdas reach AWS services via public APIs. | Same trigger as VPC placement above. |
 | **Lambda Power Tuning** | Static memory: Producer 512 MB, Consumer 1024 MB, Fulfillment 1024 MB, monitors 256 MB. | Sustained webhook p95 > 800 ms OR fulfillment p95 > 2 s OR cost per invocation > $0.0005. Then run AWS Lambda Power Tuner against production traffic samples and adjust. |
+                                                                                                                                                                                                                                                                                                                                                                  
+
+---
+
+## 17. Implementation Notes and Gotchas
+
+A live appendix. Each entry captures a rule that prevented or fixed a real bug
+during implementation, with the underlying mechanism so future contributors
+can judge edge cases. New entries land here as they are discovered, dated for
+context.
+
+### 17.1 Logging factory must defer `sys.stdout` resolution (Phase 5)
+
+**Rule.** Initialize structlog with `PrintLoggerFactory()` and no `file=`
+argument. Never pass `file=sys.stdout` to the factory.
+
+**Why.** `PrintLoggerFactory(file=sys.stdout)` captures the stdout file handle
+at factory construction. The handle becomes stale when a test harness (pytest
+capture, an embedded shell, or any stdout redirection) closes or rotates
+stdout between calls. Subsequent log emissions raise
+`ValueError: I/O operation on closed file`. The factory's default
+(`file=None`) tells `PrintLogger.msg` to use the current `sys.stdout` at log
+time, which survives capture rotation.
+
+**How to apply.** Any module that configures structlog or any other "lazy
+print" logger must keep file resolution dynamic. Code review checkpoint:
+`grep -n "file=sys.stdout" razorpay_checkout/` should return zero hits.
+
+### 17.2 FastAPI introspection breaks under `TYPE_CHECKING` + future annotations (Phase 5)
+
+**Rule.** Any name used as a type annotation in a function FastAPI introspects
+(route handler, `Depends` target, response model) must be imported at module
+top, not inside `if TYPE_CHECKING:`. Prefer to drop
+`from __future__ import annotations` from these modules entirely.
+
+**Why.** FastAPI resolves route and dependency signatures via
+`typing.get_type_hints()` at registration time. With future annotations active,
+the annotations are strings; resolution requires the names to be in the
+module's runtime globals. `TYPE_CHECKING` imports never enter runtime globals,
+so resolution silently fails and FastAPI falls back to treating the parameter
+as a query string. The visible symptom is a 422 with
+`{"loc":["query","<param_name>"]}` for a parameter that should have been the
+body or a `Depends` injection.
+
+**Trap.** The failing parameter may not be the obvious one. The bug surfaced
+when `correlation_id_dependency(request: Request)` had `Request` under
+`TYPE_CHECKING`; FastAPI's introspection of the dependency's signature failed,
+which it surfaced as a 422 on the **route's** body parameter instead of the
+dependency's.
+
+**How to apply.** Two-part checklist for any module that participates in route
+or dependency wiring:
+
+1. No `from __future__ import annotations` at the top.
+2. All type annotation names imported at runtime (no `TYPE_CHECKING` block for
+   FastAPI-visible types).
+
+Modules holding pure data (Pydantic models, services, enums) may keep
+`from __future__ import annotations`. The constraint applies only to modules
+whose functions FastAPI introspects.
+
+### 17.3 `UNIQUE` constraint is not sufficient to deduplicate side-effects (Phase 5)
+
+**Rule.** When concurrent callers must produce **one** external side-effect
+(e.g., one Razorpay order creation per receipt), wrap the side-effect plus the
+post-side-effect DB write in a transaction guarded by
+`pg_advisory_xact_lock(hash(tenant_id, business_key))`. The `UNIQUE`
+constraint alone serialises the INSERT but does not prevent the loser threads
+from each performing the side-effect.
+
+**Why.** The race is between the SELECT-then-INSERT phase (which the UNIQUE
+constraint resolves via `UniqueViolationError`) and the post-INSERT side
+effect. Losers refetch a row in `initializing` and proceed to make their own
+external call. Result: N callers, 1 row, N external calls.
+
+**How to apply.** For `create_or_get`-style flows that involve an external
+HTTP call:
+
+1. Txn A under `pg_advisory_xact_lock`: SELECT or INSERT the placeholder row.
+   Commit.
+2. Txn B under the same advisory lock: re-check the row's completed state;
+   short-circuit if a leader already filled it in. Otherwise perform the
+   external call inside the transaction and UPDATE the row.
+
+This pattern is in `OrderService.create_or_get`. Adopt the same shape for any
+new gateway or third-party handshake that must be deduplicated.
+
+### 17.4 "Terminal" has two senses in the order state machine (Phase 4)
+
+**Rule.** Distinguish **idempotency-terminal** (receipt freed; new orders
+allowed) from **lifecycle-terminal** (no outgoing edges in the transition
+table). `failed` is idempotency-terminal but **not** lifecycle-terminal
+because `failed -> attempted` is a legal recovery edge. Only `refunded` is
+lifecycle-terminal.
+
+**Why.** The DESIGN prose calls `failed` "terminal" for receipt idempotency
+purposes (Section 2.1 and Section 4). The transition table contradicts this
+on closer reading by allowing the recovery edge. Treating them as one concept
+in code produces unit-test contradictions, as observed when asserting "no
+terminal status has outgoing edges".
+
+**How to apply.** `razorpay_checkout/state_machine.py` exports both `TERMINAL`
+and `LIFECYCLE_TERMINAL` frozensets. Use `TERMINAL` when reasoning about
+receipt re-use; use `LIFECYCLE_TERMINAL` when reasoning about whether any
+edge can leave the state.
+
+### 17.5 `received_at` belongs to the producer, not the consumer (Phase 6 forward-looking)
+
+**Rule.** The Webhook Consumer's `INSERT INTO webhook_events` must pass an
+explicit `received_at` value from the SQS message envelope. Do not let the DB
+default (`NOW()`) fire.
+
+**Why.** The Webhook Producer is what Razorpay sees. The producer-to-consumer
+SQS hop adds variable latency. `received_at` must reflect Razorpay-perceived
+receipt time for accurate reconciliation, latency dashboards, and forensic
+trace alignment.
+
+**How to apply.** Producer puts `received_at` (its wall clock at HTTP entry)
+into the SQS message envelope. Consumer reads the envelope and uses
+`INSERT INTO webhook_events (..., received_at, ...) VALUES (..., $env_ts, ...)`.
+The DB default `NOW()` remains as a safety fallback only for direct inserts
+outside the application path.

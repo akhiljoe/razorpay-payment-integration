@@ -184,3 +184,71 @@ async def verify_callback(
     return VerifyCallbackResponse(
         verified=True, order_id=str(record.id), reason=None
     )
+
+
+# ---------- POST /webhook/{tenant_id} (Webhook Producer) ----------
+
+from razorpay_checkout.webhook_producer import (  # noqa: E402
+    MalformedPayloadError,
+    PublishFailureError,
+    SignatureMismatchError,
+    UnknownTenantError,
+    WebhookProducer,
+)
+
+
+def get_webhook_producer(request: Request) -> WebhookProducer:
+    producer = getattr(request.app.state, "webhook_producer", None)
+    if producer is None:
+        raise RuntimeError(
+            "WebhookProducer is not registered on app.state.webhook_producer"
+        )
+    return producer  # type: ignore[no-any-return]
+
+
+@payments_router.post(
+    "/webhook/{tenant_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=None,
+)
+async def webhook(
+    tenant_id: str,
+    request: Request,
+    producer: Annotated[WebhookProducer, Depends(get_webhook_producer)],
+) -> JSONResponse:
+    """Razorpay webhook entry point.
+
+    DESIGN_v5 Section 2.1: returns 200 queued in under 500 ms. The producer
+    holds no DB credentials; downstream processing happens in the consumer
+    Lambda. Unknown tenant returns 400 (not 404) per the design's
+    publicly-enumerable-URL rationale.
+    """
+    raw_body = await request.body()
+    header_signature = request.headers.get("x-razorpay-signature", "")
+
+    try:
+        ack = await producer.process(
+            raw_body=raw_body,
+            header_signature=header_signature,
+            tenant_id=tenant_id,
+        )
+    except UnknownTenantError:
+        return JSONResponse(status_code=400, content={"detail": "unknown_tenant"})
+    except SignatureMismatchError:
+        return JSONResponse(status_code=400, content={"detail": "signature_mismatch"})
+    except MalformedPayloadError as exc:
+        return JSONResponse(
+            status_code=400, content={"detail": "malformed_payload", "reason": exc.reason}
+        )
+    except PublishFailureError as exc:
+        # Producer could not publish to SQS. Tell Razorpay to retry.
+        _log.error("webhook_route_503", reason=exc.reason)
+        return JSONResponse(
+            status_code=503, content={"detail": "queue_unavailable"}
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={"status": ack.status, "correlation_id": ack.correlation_id},
+        headers={"X-Correlation-Id": ack.correlation_id},
+    )

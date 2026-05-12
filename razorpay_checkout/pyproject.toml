@@ -45,6 +45,7 @@ asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 markers = [
     "requires_db: integration test that needs a live Postgres reachable via DATABASE_URL",
+    "requires_localstack: integration test that needs LocalStack reachable via AWS_ENDPOINT_URL",
 ]
 
 [tool.ruff]
