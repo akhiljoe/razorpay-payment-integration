@@ -1714,3 +1714,40 @@ backend takes route (b) with a small stdlib loop using
 Lambdas avoid the trap entirely: AWS values come from the execution role
 and Lambda environment, not from a checked-in `.env`. This learning is
 dev-tooling specific.
+
+### 17.13 SQS `receive_message` locks messages even for read-only inspection (Phase 14)
+
+**Rule.** Any CLI or operator script that uses `receive_message` to peek at
+DLQ contents must call `change_message_visibility(VisibilityTimeout=0)` on
+each received message immediately after the read. Without this, the
+message becomes invisible for the default visibility timeout (30s) — and
+the operator's very next `inspect` or `delete --dry-run` invocation sees
+an empty queue, even though `list` just showed messages were present.
+
+**Why.** Phase 14's `scripts/dlq-replay.py` issued three commands in
+sequence: `list`, `inspect`, then `delete --dry-run`. The first two each
+acquired the message under a short visibility timeout, then exited. The
+third command's `receive_message` call returned no messages because the
+prior receives' visibility timeout was still in effect (the locks
+overlap, not stack). The CLI reported `no matching messages` and the
+operator briefly thought their script was broken. The actual queue
+contents were unchanged.
+
+**How to apply.** Two-mode receive helper:
+
+```python
+def receive_all(sqs, url, *, peek_visibility=5, release_after_peek=False):
+    msgs = sqs.receive_message(QueueUrl=url, VisibilityTimeout=peek_visibility, ...)
+    if release_after_peek:
+        for m in msgs.get("Messages", []):
+            sqs.change_message_visibility(
+                QueueUrl=url, ReceiptHandle=m["ReceiptHandle"], VisibilityTimeout=0,
+            )
+    return msgs
+```
+
+Read-only commands (`list`, `inspect`) and any `--dry-run` pass
+`release_after_peek=True`. Destructive commands (`replay`, `delete`)
+pass `False` so the message stays locked through the publish/delete
+call. The cost is one extra RPC per message on read paths; in DLQ
+operations this is negligible.
