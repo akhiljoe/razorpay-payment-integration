@@ -11,6 +11,7 @@ this fires during Neon cold starts or pool exhaustion under burst load.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -33,6 +34,28 @@ def _normalise_dsn(dsn: str) -> str:
     return dsn
 
 
+async def _register_codecs(conn: asyncpg.Connection) -> None:
+    """Register JSON codecs so `jsonb`/`json` columns round-trip as dicts.
+
+    asyncpg returns JSONB columns as raw `str` by default; tests and handler
+    code expect `dict`. Registering the codec at pool-init time means every
+    connection acquired from the pool has the same shape. See DESIGN_v5
+    Section 17.8.
+    """
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
+    await conn.set_type_codec(
+        "json",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
+
+
 async def create_pool(config: RazorpayConfig) -> asyncpg.Pool:
     """Create an asyncpg pool using sizing and timeout from `config`.
 
@@ -45,6 +68,7 @@ async def create_pool(config: RazorpayConfig) -> asyncpg.Pool:
         min_size=config.pool_min_size,
         max_size=config.pool_max_size,
         command_timeout=config.razorpay_api_timeout,
+        init=_register_codecs,
     )
 
 

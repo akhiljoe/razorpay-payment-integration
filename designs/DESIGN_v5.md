@@ -1550,3 +1550,34 @@ orchestrator skips its `_mark_event_done` call when this flag is set.
 More generally: when an orchestrator and its callees share a write target,
 the callees must communicate write intent back to the orchestrator. Silent
 overwrites are the failure mode.
+
+### 17.8 asyncpg returns JSONB as `str` by default; register a codec (Phase 9)
+
+**Rule.** Register `json.dumps` / `json.loads` codecs for the `jsonb` and
+`json` types on every asyncpg connection. Do this at pool init time via the
+`init=` callback so the codec is uniform across the codebase.
+
+**Why.** asyncpg's default behaviour for JSONB columns is to round-trip them
+as `str`. Code that reads `row["metadata"]` expecting a dict gets a JSON
+string back, producing `TypeError: string indices must be integers, not 'str'`
+the moment any handler indexes into it. Worse, default-string semantics
+silently work for INSERTs when callers happen to pass JSON strings, hiding
+the asymmetry until a SELECT path exercises it.
+
+**How to apply.** `razorpay_checkout/db.py` registers the codec in
+`_register_codecs`, passed as `init=` to `asyncpg.create_pool`. Every
+connection acquired from the pool has the codec installed. Consequences:
+
+- INSERTs into JSONB columns must pass `dict` (or other JSON-serializable
+  Python objects), **not** pre-serialized JSON strings. `json.dumps(...)`
+  before the asyncpg call is now wrong.
+- SELECTs return `dict`. Handlers can index into `row["metadata"]["key"]`
+  directly.
+- The `::jsonb` cast in SQL is still accepted but no longer required for
+  type coercion. Keep it for explicit-is-better-than-implicit.
+
+**Diagnostic.** If a test asserts `row["jsonb_col"]["key"] == value` and
+errors with `TypeError: string indices must be integers, not 'str'`, the
+codec is not registered on the connection that ran the SELECT. Check that
+the pool was built via `razorpay_checkout.db.create_pool` (not a raw
+`asyncpg.create_pool` call somewhere bypassing the init hook).

@@ -22,7 +22,6 @@ transaction's `__aexit__`.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from razorpay_checkout.logging_config import get_logger
@@ -274,7 +273,7 @@ async def handle_refund_processed(ctx: HandlerContext) -> _HandlerOutcome:
         razorpay_payment_id,
         amount,
         currency,
-        json.dumps({"event_id": ctx.webhook_event_id and str(ctx.webhook_event_id)}),
+        {"event_id": ctx.webhook_event_id and str(ctx.webhook_event_id)},
     )
 
     await ctx.service.transition(

@@ -40,7 +40,6 @@ Concurrency model for create_or_get (two transactions on the same connection):
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -171,7 +170,7 @@ class OrderService:
                         request.receipt,
                         amount,
                         currency,
-                        json.dumps(request.notes),
+                        request.notes,
                         cid,
                     )
                     assert inserted is not None
@@ -253,7 +252,7 @@ class OrderService:
                     order_id,
                     tenant_id,
                     cid,
-                    json.dumps({"razorpay_order_id": razorpay_order_id}),
+                    {"razorpay_order_id": razorpay_order_id},
                 )
 
         _log.info(
@@ -327,7 +326,7 @@ class OrderService:
             trigger,
             webhook_event_id,
             cid,
-            json.dumps(metadata or {}),
+            metadata or {},
         )
 
         _log.info(

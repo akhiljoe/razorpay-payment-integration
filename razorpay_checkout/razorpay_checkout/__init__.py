@@ -28,6 +28,13 @@ from razorpay_checkout.correlation import (
     new_correlation_id,
     set_correlation_id,
 )
+from razorpay_checkout.fulfillment import (
+    DefaultFulfillmentHook,
+    FulfillmentEnvelopeError,
+    FulfillmentHook,
+    FulfillmentProcessor,
+    FulfillmentResult,
+)
 from razorpay_checkout.logging_config import configure_logging, get_logger, register_secret
 from razorpay_checkout.orders import OrderNotFoundError, OrderService
 from razorpay_checkout.queue import (
@@ -84,7 +91,12 @@ __all__ = [
     "AmountResolutionError",
     "AmountResolver",
     "ConsumerEnvelopeError",
+    "DefaultFulfillmentHook",
     "FixedAmountResolver",
+    "FulfillmentEnvelopeError",
+    "FulfillmentHook",
+    "FulfillmentProcessor",
+    "FulfillmentResult",
     "IllegalTransitionError",
     "MalformedPayloadError",
     "OrderNotFoundError",

@@ -141,7 +141,7 @@ class WebhookConsumer:
                 tenant_id,
                 event_id,
                 event,
-                json.dumps(payload),
+                payload,
                 cid,
                 _parse_received_at(received_at),
             )
