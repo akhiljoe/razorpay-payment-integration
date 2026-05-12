@@ -94,8 +94,8 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 
 > Depends on: core config.
 
-- [ ] **What:** Define the `OrderStatus` enum and the 14-edge transition table from DESIGN Section 4.
-  **Output:** `razorpay_checkout/razorpay_checkout/state_machine.py` with `ALLOWED_TRANSITIONS` of length 14; `tests/test_state_machine.py` asserts inclusion and exclusion samples.
+- [ ] **What:** Define the `OrderStatus` enum and the 15-edge transition table from DESIGN Section 4.
+  **Output:** `razorpay_checkout/razorpay_checkout/state_machine.py` with `ALLOWED_TRANSITIONS` of length 15 (15 explicit edges in DESIGN_v5 Section 4's transition table); `tests/test_state_machine.py` asserts inclusion and exclusion samples and that only `refunded` is lifecycle-terminal (zero outgoing edges).
 
 - [ ] **What:** Implement `IllegalTransitionError` and `assert_transition`.
   **Output:** Same module; parametrized test enumerates every legal and illegal edge.
