@@ -1614,3 +1614,53 @@ The `Overriding of current MeterProvider is not allowed` warning (Section
 provider setters are set-once. Tests must bind instruments to the
 explicit `MeterProvider` returned from `configure_otel`, not to the global,
 which is why `_rebind_instruments(meter_provider)` accepts an argument.
+
+### 17.10 Stray shell exports silently override `.env` in pydantic-settings (Phase 12)
+
+**Rule.** When `RazorpayConfig()` appears to load wrong values, the first
+check is `env | grep ^RAZORPAY_`. Process environment beats `.env`, and
+pydantic-settings v2 does not warn about source conflicts. A long-lived
+shell with a stale `export RAZORPAY_TENANT_ID=t_dev` (left over from an
+earlier session, a `direnv`, or a profile file) will pin `tenant_id`
+regardless of what the `.env` says.
+
+**Why.** Source priority in pydantic-settings is `init kwargs` >
+`os.environ` > `.env` > defaults. The producer's first user-visible
+symptom in Phase 12 was a Razorpay `401 Authentication failed` that
+looked like a credentials bug for ~30 minutes. The shell had stale
+`RAZORPAY_TENANT_ID` and `RAZORPAY_KEY_ID` exports that mismatched the
+`.env`; pydantic-settings cheerfully merged them with no diagnostic.
+
+**How to apply.** Add `env | grep ^RAZORPAY_` to the dev-backend startup
+checklist before any "wrong env" debugging. In tests, `monkeypatch.delenv`
+every `RAZORPAY_*` key at fixture setup so leaked process env from CI
+runners cannot bleed in. For long-term safety, consider failing loud at
+lifespan start if `os.environ` defines any `RAZORPAY_*` that disagrees
+with the loaded `.env`; the alternative is silent config drift that is
+indistinguishable from a bad secret.
+
+### 17.11 Only `RAZORPAY_`-prefixed keys auto-load from `.env`; AWS values need a manual lift (Phase 12)
+
+**Rule.** `RazorpayConfig` is a pydantic-settings model with
+`env_prefix="RAZORPAY_"`. It loads its own keys from `.env` automatically.
+Other variables in the same `.env` file (`AWS_ENDPOINT_URL`,
+`AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) are
+**not** lifted into `os.environ` by pydantic. Code paths that read those
+directly (aioboto3, boto3) will see them as unset.
+
+**Why.** The dev backend's lifespan in `example/backend/main.py` reads
+`AWS_ENDPOINT_URL` with `os.environ.get(...)` to redirect aioboto3 at
+LocalStack. With `.env` populated but the shell missing the AWS exports,
+aioboto3 used the default endpoint (real AWS) and rejected the
+LocalStack-style `test`/`test` credentials with
+`InvalidClientTokenId: The security token included in the request is
+invalid`. Confusing because `RazorpayConfig` loaded fine from the same file.
+
+**How to apply.** Either (a) export AWS values in every shell that runs
+the dev backend, or (b) parse `.env` manually into `os.environ` at the
+top of the entry module before any aioboto3 or boto3 import. The dev
+backend takes route (b) with a small stdlib loop using
+`os.environ.setdefault` so explicit shell exports still win. Production
+Lambdas avoid the trap entirely: AWS values come from the execution role
+and Lambda environment, not from a checked-in `.env`. This learning is
+dev-tooling specific.

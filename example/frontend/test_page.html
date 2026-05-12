@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Razorpay Checkout dev test page</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: 0.25rem; }
+    .sub { color: #666; margin-bottom: 1.5rem; }
+    .row { display: flex; gap: 0.75rem; margin: 1rem 0; align-items: center; flex-wrap: wrap; }
+    label { font-weight: 600; }
+    input { padding: 0.4rem 0.6rem; border: 1px solid #bbb; border-radius: 4px; font-family: monospace; }
+    button { padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #2a6; background: #2a6; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; background: #eee; font-family: monospace; }
+    .badge.fulfilled { background: #d3f5d3; color: #064; }
+    .badge.paid { background: #fef4c4; color: #654; }
+    .badge.failed { background: #fcd; color: #844; }
+    .badge.refunded { background: #ccdef5; color: #246; }
+    pre { background: #111; color: #cfc; padding: 0.75rem; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 0.85em; }
+    .meta { font-family: monospace; font-size: 0.9em; color: #444; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Razorpay Checkout dev test page</h1>
+  <p class="sub">
+    Not a production UI. Use Razorpay test card <code>4111 1111 1111 1111</code>,
+    any future expiry, any CVV, OTP <code>1234</code>.
+  </p>
+
+  <div class="row">
+    <label for="receipt">Receipt:</label>
+    <input id="receipt" type="text" size="32">
+    <button id="create-order">1. Create order</button>
+  </div>
+
+  <div class="row">
+    <span>Order id:</span><span id="order-id" class="meta">-</span>
+  </div>
+  <div class="row">
+    <span>Razorpay order id:</span><span id="razorpay-order-id" class="meta">-</span>
+  </div>
+  <div class="row">
+    <span>Status:</span><span id="status" class="badge">none</span>
+  </div>
+
+  <div class="row" id="mount-container"></div>
+
+  <h3>Log</h3>
+  <pre id="log"></pre>
+
+  <script type="module">
+    import { mountCheckout } from "/dev/widget.js";
+
+    const $ = (id) => document.getElementById(id);
+    const log = (line) => {
+      $("log").textContent += new Date().toISOString() + " " + line + "\n";
+      $("log").scrollTop = $("log").scrollHeight;
+    };
+    const setStatus = (s) => {
+      const el = $("status");
+      el.textContent = s;
+      el.className = "badge " + s;
+    };
+
+    $("receipt").value = "dev-" + Math.random().toString(36).slice(2, 10);
+
+    let currentOrderId = null;
+    let unmountWidget = null;
+
+    $("create-order").onclick = async () => {
+      const receipt = $("receipt").value;
+      log("POST /payments/orders receipt=" + receipt);
+      const r = await fetch("/payments/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ receipt, currency: "INR" }),
+      });
+      if (!r.ok) { log("FAILED " + r.status); return; }
+      const data = await r.json();
+      currentOrderId = data.order_id;
+      $("order-id").textContent = data.order_id;
+      $("razorpay-order-id").textContent = data.razorpay_order_id;
+      setStatus("created");
+      log("order_id=" + data.order_id + " amount=" + data.amount);
+
+      if (unmountWidget) unmountWidget();
+      unmountWidget = mountCheckout($("mount-container"), {
+        orderEndpoint: "/payments/orders",
+        receipt: receipt,
+        buttonLabel: "2. Pay with Razorpay",
+        onSuccess: async (result) => {
+          log("onSuccess payment_id=" + result.razorpayPaymentId);
+          const v = await fetch("/payments/verify-callback", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              razorpay_order_id: result.razorpayOrderId,
+              razorpay_payment_id: result.razorpayPaymentId,
+              razorpay_signature: result.razorpaySignature,
+            }),
+          });
+          const vbody = await v.json();
+          log("verify-callback verified=" + vbody.verified);
+          startPolling(currentOrderId);
+        },
+        onFailure: (err) => { log("onFailure code=" + err.code + " " + err.description); setStatus("failed"); },
+        onDismiss: () => log("modal dismissed"),
+      });
+    };
+
+    function startPolling(orderId) {
+      const deadline = Date.now() + 30000;
+      const tick = async () => {
+        if (Date.now() > deadline) { log("poll timeout (30s)"); return; }
+        const r = await fetch("/payments/orders/" + orderId);
+        if (!r.ok) { log("poll " + r.status); setTimeout(tick, 2000); return; }
+        const d = await r.json();
+        setStatus(d.status);
+        log("poll status=" + d.status);
+        if (["fulfilled", "refunded", "failed"].includes(d.status)) return;
+        setTimeout(tick, 2000);
+      };
+      tick();
+    }
+  </script>
+</body>
+</html>
