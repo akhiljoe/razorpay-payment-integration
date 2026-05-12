@@ -1,0 +1,98 @@
+# Razorpay Payment Integration
+
+A production-grade Razorpay payment integration shipped as a Python library plus a TypeScript checkout widget. Multi-tenant, idempotent, observable, locally testable end-to-end without any cloud dependency.
+
+## Status
+
+**16 phases complete, fully tested locally.** Cloud deploy (Phase 17) is documented but not executed — the artifact is shippable as-is for any host that has its own AWS infrastructure.
+
+- 240+ pytest tests + 3 chaos tests pass against Postgres + LocalStack
+- 11/11 dashboard scenarios prove every Critical Invariant end-to-end
+- 15 vitest tests + 0 npm-audit runtime vulnerabilities for the widget
+- 5 operator runbooks + 4 cloud onboarding docs + 13 documented Section 17 learnings
+
+## What's in the box
+
+| Component | Purpose |
+|---|---|
+| `razorpay_checkout/` | Python package — FastAPI router, async DB, OTel, idempotent consumer + fulfillment processors |
+| `packages/checkout-widget/` | TypeScript npm package — React + vanilla adapters around Razorpay's checkout.js |
+| `example/backend/` | FastAPI dev backend wiring the whole flow + a 17-step Payment Journey dashboard + a buyer-perspective storefront |
+| `scripts/` | Operator CLIs: `local-fixtures`, `local-pump`, `razorpay-simulator`, `dlq-replay` |
+| `infra/` | AWS CDK Python (FoundationStack + PaymentsStack) for cloud deploy |
+| `docs/` | Runbooks, cloud onboarding, diagrams |
+| `designs/DESIGN_v5.md` | Formal design document, source of truth |
+
+## Where to start, by role
+
+| You are | Read |
+|---|---|
+| New developer running locally | [QUICKSTART.md](QUICKSTART.md) |
+| Looking up "how do I X" | [COMMANDS.md](COMMANDS.md) |
+| Debugging a failure | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| Wanting the system overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| On-call, something broke | [docs/runbooks/](docs/runbooks/) |
+| Preparing to deploy to AWS | [docs/cloud/](docs/cloud/) |
+| Reading the formal spec | [designs/DESIGN_v5.md](designs/DESIGN_v5.md) |
+| Trying to understand past decisions | [PHASES.md](PHASES.md) + `git log` |
+| AI agent working on the codebase | [CLAUDE.md](CLAUDE.md) |
+
+## Architecture in one sentence
+
+A FastAPI router receives Razorpay webhooks, fast-verifies HMAC signatures **without any database access**, publishes onto an SQS FIFO queue; a separate consumer Lambda drains the queue, applies an event-type-aware idempotency guard inside a `SELECT ... FOR UPDATE` transaction, advances the order's state machine, and publishes to a second SQS FIFO queue; a fulfillment Lambda drains that, invokes the host's `FulfillmentHook`, and transitions to terminal status.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full diagram and the 10 Critical Invariants that make this safe.
+
+## Run it locally
+
+```bash
+docker compose up -d postgres localstack
+cd razorpay_checkout && uv sync --extra dev && uv run alembic upgrade head
+```
+
+Three terminals:
+
+```bash
+# Terminal A: backend
+cd example/backend && uv run --project ../../razorpay_checkout uvicorn main:app --reload --port 8000
+
+# Terminal B: consumer pump
+uv run --project razorpay_checkout python scripts/local-pump.py
+
+# Terminal C: open browser
+# http://localhost:8000/dev/dashboard  — 17-step Payment Journey + 11 scenarios
+# http://localhost:8000/dev/shop       — buyer-perspective storefront
+```
+
+Full step-by-step in [QUICKSTART.md](QUICKSTART.md).
+
+## Key invariants (the load-bearing ones)
+
+1. The **Webhook Producer holds no database credentials.** This is enforced in IAM, not just in code.
+2. Every query against `orders`, `payments`, `refunds`, `webhook_events`, `order_events` filters by `tenant_id`. Enforced by `OrderService` and `WebhookConsumer`, never the caller.
+3. **Event-type-aware idempotency** inside a `SELECT ... FOR UPDATE` transaction. `event_id ON CONFLICT DO NOTHING` is the fast path; the primary guard runs after the row lock.
+4. **DB commit before any side effect.** SQS publishes, logs, external calls all happen after the consumer's transaction commits.
+5. **Correlation IDs propagate end to end** across the Producer → SQS → Consumer → SQS → Fulfillment hops via MessageAttributes.
+
+Full list in [ARCHITECTURE.md](ARCHITECTURE.md). Each invariant has at least one test asserting it.
+
+## How to evaluate quickly
+
+If you have 5 minutes:
+
+1. `git log --oneline -10` — see the phase commits.
+2. Open `http://localhost:8000/dev/dashboard` (after running the 3 terminals above), click **Run all scenarios in sequence**. Watch 11 invariants prove themselves.
+
+If you have 30 minutes:
+
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md).
+2. Read one runbook of your choice from `docs/runbooks/`.
+3. Skim DESIGN_v5 Section 17 (the lessons learned).
+
+## License + status
+
+Not currently licensed for redistribution; project is in development for internal use. Contact the owner before forking.
+
+---
+
+Bug reports, design discussions: open an issue in the repo. Production incidents follow the [incident checklist runbook](docs/runbooks/incident-checklist.md).
