@@ -40,6 +40,7 @@ from razorpay_checkout.correlation import (
 )
 from razorpay_checkout.logging_config import get_logger
 from razorpay_checkout.state_machine import OrderStatus
+from razorpay_checkout.telemetry import fulfillment_duration_ms
 
 if TYPE_CHECKING:
     from razorpay_checkout.orders import OrderService
@@ -136,6 +137,8 @@ class FulfillmentProcessor:
         message_body: str,
         message_attributes: dict[str, Any] | None = None,
     ) -> FulfillmentResult:
+        import time as _time  # noqa: PLC0415
+        _start_ns = _time.perf_counter_ns()
         envelope = self._parse_envelope(message_body)
         cid = self._bind_correlation_id(message_attributes)
 
@@ -216,6 +219,8 @@ class FulfillmentProcessor:
                     },
                 )
 
+        _elapsed_ms = (_time.perf_counter_ns() - _start_ns) / 1_000_000.0
+        fulfillment_duration_ms.record(_elapsed_ms, {"tenant_id": tenant_id})
         _log.info(
             "fulfillment_completed",
             tenant_id=tenant_id,

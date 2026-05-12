@@ -68,6 +68,7 @@ from razorpay_checkout.state_machine import (
     assert_transition,
     is_stale_failed_event,
 )
+from razorpay_checkout.telemetry import configure_otel
 from razorpay_checkout.tenants import TenantConfigRegistry
 from razorpay_checkout.webhook_consumer import (
     AmountMismatchError,
@@ -132,6 +133,7 @@ __all__ = [
     "aws_endpoint_url",
     "build_webhook_envelope",
     "configure_logging",
+    "configure_otel",
     "correlation_id_dependency",
     "ensure_fulfillment_queues",
     "ensure_webhook_events_queues",

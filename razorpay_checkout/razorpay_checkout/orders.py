@@ -58,6 +58,7 @@ from razorpay_checkout.state_machine import (
     OrderStatus,
     assert_transition,
 )
+from razorpay_checkout.telemetry import order_state_transition_count
 
 if TYPE_CHECKING:
     from razorpay_checkout.amounts import AmountResolver
@@ -329,6 +330,14 @@ class OrderService:
             metadata or {},
         )
 
+        order_state_transition_count.add(
+            1,
+            {
+                "from": from_status.value,
+                "to": new_status.value,
+                "tenant_id": tenant_id,
+            },
+        )
         _log.info(
             "order_transition",
             tenant_id=tenant_id,

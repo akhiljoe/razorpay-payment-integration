@@ -22,6 +22,7 @@ import asyncpg
 from razorpay_checkout.config import RazorpayConfig
 from razorpay_checkout.db import create_pool
 from razorpay_checkout.logging_config import configure_logging, get_logger
+from razorpay_checkout.telemetry import dead_event_count
 
 _log = get_logger("razorpay_checkout.lambdas.webhook_events_dlq_poller")
 _state: dict[str, Any] = {}
@@ -63,6 +64,7 @@ async def _process_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             await _mark_dead(
                 pool, tenant_id, event_id, reason=f"dlq_message_id={message_id}"
             )
+            dead_event_count.add(1, {"tenant_id": tenant_id})
             _log.warning(
                 "dead_event_marked",
                 tenant_id=tenant_id,

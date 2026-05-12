@@ -26,6 +26,7 @@ import asyncpg
 
 from razorpay_checkout.logging_config import get_logger
 from razorpay_checkout.models import ReconcileMismatch, ReconcileResponse
+from razorpay_checkout.telemetry import reconciliation_mismatch_count
 
 if TYPE_CHECKING:
     from razorpay_checkout.client import RazorpayClient
@@ -151,6 +152,10 @@ async def reconcile(
                 )
             )
 
+    for m in mismatches:
+        reconciliation_mismatch_count.add(
+            1, {"reason": m.reason, "tenant_id": tenant_id}
+        )
     _log.info(
         "reconcile_completed",
         tenant_id=tenant_id,

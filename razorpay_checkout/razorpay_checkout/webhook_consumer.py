@@ -40,6 +40,11 @@ from razorpay_checkout.correlation import (
 from razorpay_checkout.logging_config import get_logger
 from razorpay_checkout.queue import SQSClient, publish_fulfillment_message
 from razorpay_checkout.state_machine import OrderStatus
+from razorpay_checkout.telemetry import (
+    fulfillment_sqs_publish_failures,
+    webhook_consumer_duration_ms,
+    webhook_duplicate_count,
+)
 from razorpay_checkout.webhook_idempotency import SkipDecision, should_skip
 
 if TYPE_CHECKING:
@@ -57,6 +62,13 @@ def _parse_received_at(value: str) -> datetime:
     """
     # Python 3.11+ `fromisoformat` accepts the trailing `Z`.
     return datetime.fromisoformat(value)
+
+
+def _record_duration(start_ns: int, tenant_id: str) -> None:
+    """Emit webhook_consumer_duration_ms for the elapsed window."""
+    import time as _time  # noqa: PLC0415
+    elapsed_ms = (_time.perf_counter_ns() - start_ns) / 1_000_000.0
+    webhook_consumer_duration_ms.record(elapsed_ms, {"tenant_id": tenant_id})
 
 
 SUPPORTED_EVENTS = (
@@ -110,6 +122,8 @@ class WebhookConsumer:
         unacked and routes to DLQ after retries (these indicate a producer
         bug, not a recoverable failure).
         """
+        import time as _time  # noqa: PLC0415
+        _start_ns = _time.perf_counter_ns()
         envelope = self._parse_envelope(message_body)
         cid = self._bind_correlation_id(message_attributes, envelope)
 
@@ -146,11 +160,13 @@ class WebhookConsumer:
                 _parse_received_at(received_at),
             )
             if inserted is None:
+                webhook_duplicate_count.add(1, {"tenant_id": tenant_id, "kind": "event_id"})
                 _log.info(
                     "webhook_duplicate_event_id",
                     tenant_id=tenant_id,
                     event_id=event_id,
                 )
+                _record_duration(_start_ns, tenant_id)
                 return SkipDecision.SKIP_ALREADY_APPLIED
             webhook_event_id: UUID = inserted["id"]
 
@@ -174,6 +190,7 @@ class WebhookConsumer:
                     **handler_outcome.fulfillment_payload,
                 )
             except Exception as exc:  # noqa: BLE001 - log and continue
+                fulfillment_sqs_publish_failures.add(1, {"tenant_id": tenant_id})
                 _log.error(
                     "fulfillment_sqs_publish_failed",
                     tenant_id=tenant_id,
@@ -182,6 +199,7 @@ class WebhookConsumer:
                 )
                 # Order stays in `paid`; stale-paid monitor catches it (Section 7).
 
+        _record_duration(_start_ns, tenant_id)
         return handler_outcome.decision
 
     # ---------- envelope parsing ----------

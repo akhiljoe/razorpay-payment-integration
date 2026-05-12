@@ -1,0 +1,4 @@
+fields @timestamp, level, module, event, correlation_id, tenant_id, order_id, razorpay_payment_id, error
+| filter correlation_id = "<CORRELATION_ID>"
+| sort @timestamp asc
+| limit 200

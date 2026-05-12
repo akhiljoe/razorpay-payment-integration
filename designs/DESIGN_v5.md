@@ -1581,3 +1581,36 @@ errors with `TypeError: string indices must be integers, not 'str'`, the
 codec is not registered on the connection that ran the SELECT. Check that
 the pool was built via `razorpay_checkout.db.create_pool` (not a raw
 `asyncpg.create_pool` call somewhere bypassing the init hook).
+
+### 17.9 ConsoleMetricExporter pins `sys.stdout` and runs on a daemon thread (Phase 11)
+
+**Rule.** When `OTEL_EXPORTER=stdout` is selected, the OTel SDK wraps a
+`ConsoleMetricExporter` in a `PeriodicExportingMetricReader` that runs on a
+background daemon thread. The exporter captures `sys.stdout` at construction.
+Any test (or test-like environment) that creates this configuration without
+explicitly calling `meter_provider.shutdown()` afterwards will see a noisy
+`ValueError: I/O operation on closed file` at interpreter shutdown when the
+background thread tries to flush against the closed pytest-capture stdout.
+
+**Why.** Same family as Section 17.1 (logging factory pinning). OTel's
+`ConsoleMetricExporter.__init__` stores `self.out = sys.stdout`. The
+`PeriodicExportingMetricReader` schedules a flush every 5 seconds on a
+non-test-aware daemon thread. pytest's capture mechanism replaces
+`sys.stdout` per test; the daemon thread holds the now-closed original.
+
+**How to apply.** Any test that invokes `configure_otel(...)` without
+injecting `metric_readers=[InMemoryMetricReader()]` must call
+`meter_provider.shutdown()` and `tracer_provider.shutdown()` in a `finally`
+block. Production code is unaffected because the exporter is constructed
+once at startup and the process keeps its stdout for its lifetime.
+
+A safer alternative is to always inject an `InMemoryMetricReader` in tests
+(which the rest of `tests/test_telemetry.py` does). The one stdout-mode test
+exists precisely to exercise the production code path and therefore must
+shut down explicitly.
+
+The `Overriding of current MeterProvider is not allowed` warning (Section
+17 implicit via Phase 11 fix) is a related but separate trap: OTel's global
+provider setters are set-once. Tests must bind instruments to the
+explicit `MeterProvider` returned from `configure_otel`, not to the global,
+which is why `_rebind_instruments(meter_provider)` accepts an argument.
