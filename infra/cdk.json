@@ -1,0 +1,36 @@
+{
+  "app": "python app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/__init__.py",
+      "**/*.pyc",
+      ".venv/**",
+      "cdk.out/**",
+      "**/.pytest_cache/**"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/aws-ecr-assets:dockerIgnoreSupport": true,
+    "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": true,
+    "@aws-cdk/aws-redshift:columnId": true,
+    "@aws-cdk/aws-stepfunctions-tasks:enableLogging": true,
+    "@aws-cdk/aws-ec2:launchTemplateDefaultUserData": true,
+    "@aws-cdk/aws-sns-subscriptions:restrictSqsDescryption": true,
+    "razorpay:env": {
+      "free-track": {
+        "account": "REPLACE_WITH_ACCOUNT_ID",
+        "region": "ap-south-1",
+        "track": "free"
+      }
+    },
+    "razorpay:ops_email": "REPLACE_WITH_OPS_EMAIL@example.com",
+    "razorpay:budget_thresholds_usd": [5, 25, 100]
+  }
+}
