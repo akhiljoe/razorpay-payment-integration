@@ -43,3 +43,9 @@ htmlcov/
 .tox/
 coverage.xml
 *.cover
+
+# Local-only installers (not source)
+*.msi
+*.exe
+*.dmg
+*.pkg
