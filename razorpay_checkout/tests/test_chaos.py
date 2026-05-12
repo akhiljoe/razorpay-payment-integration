@@ -42,7 +42,6 @@ from razorpay_checkout.queue import (
     ensure_webhook_events_queues,
 )
 from razorpay_checkout.webhook_consumer import (
-    ConsumerEnvelopeError,
     WebhookConsumer,
 )
 
@@ -235,7 +234,7 @@ async def test_poison_message_lands_in_dlq(sqs_client) -> None:
 
     # Simulate the consumer failing to process: receive, do not delete, repeat.
     # maxReceiveCount=5 means the 6th receive routes the message to DLQ.
-    for attempt in range(6):
+    for _attempt in range(6):
         resp = await sqs_client.receive_message(
             QueueUrl=main_url,
             MaxNumberOfMessages=1,
