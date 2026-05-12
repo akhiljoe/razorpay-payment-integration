@@ -1,92 +1,108 @@
----
-description: Validate Razorpay HMAC-SHA256 webhook signature logic locally without a live endpoint.
----
+# Canonical HMAC test vectors
 
-# /project:local-sig-validate
+Single source of truth for HMAC-SHA256 signature contracts in this project.
+The Webhook Producer, `scripts/razorpay-simulator.py`, and
+`tests/test_signatures.py` all reference these vectors. **A change to any one
+must update all three** or the simulator and the production code drift apart
+silently.
 
-Validate `verify_webhook_signature` in `razorpay_checkout/razorpay_checkout/signatures.py` against deterministic test vectors. For runtime end-to-end validation against a running local server, use `scripts/razorpay-simulator.py` instead (DESIGN_v5 Section 15).
+The signature contract: `HMAC-SHA256(secret, raw_body)` rendered as a
+lowercase hex digest. `hmac.compare_digest` is used for the equality check
+(constant-time).
 
-## Test Plan
+## Webhook signature
 
-1. Read `razorpay_checkout/razorpay_checkout/signatures.py`.
-2. Confirm `hmac.compare_digest` is used for constant-time comparison. Reject any `==`, `!=`, `is`, or string equality on digests.
-3. Confirm the function tries `webhook_secret` first, then falls back to `webhook_secret_previous` when set (per DESIGN_v5 Section 2.1 and Runbook 7 in Section 12).
-4. Run the local test vectors below against the function in isolation. No FastAPI app, no DB, no network.
+Computed over the raw HTTP request body bytes and the tenant's `webhook_secret`.
 
-## Test Vectors
+### Vector W1: minimal payment.captured
 
-Deterministic fixtures, computed via `hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()`.
+| Field | Value |
+|---|---|
+| `secret` | `canonical_dev_secret` |
+| `body` (bytes) | `{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_VECTOR","amount":50000}}}}` |
+| Expected hex digest | Computed at runtime in `tests/test_signatures.py::test_canonical_webhook_vector` |
 
-**Secrets:**
+Producer accepts when `X-Razorpay-Signature == HMAC-SHA256(secret, body).hex()`.
 
-- `secret_current = "whsec_test_current_v1"`
-- `secret_previous = "whsec_test_previous_v0"`
+### Rotation: previous-secret fallback
 
-**Vector A (valid, current secret):**
+When `webhook_secret_previous` is set, the producer also accepts signatures
+computed under the previous secret. Tested in
+`test_previous_secret_fallback_accepts_old_signature`.
 
-- `raw_body`: `{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_test_001","order_id":"order_test_001","amount":50000,"currency":"INR","status":"captured"}}}}`
-- `signature`: `367afa4837c3e9729fe83cd0f3dff9c786f7133fb15828082bf833a8ca815588`
-- Expected: `verify_webhook_signature(body, sig, current, previous) == True`
+| Current secret | Previous secret | Body signed with | Acceptance |
+|---|---|---|---|
+| `new_secret` | `old_secret` | `old_secret` | accepted |
+| `new_secret` | None | `old_secret` | rejected |
+| `new_secret` | `old_secret` | unrelated | rejected |
 
-**Vector B (rotation fallback, previous secret signed it):**
+## Payment-callback signature
 
-- `raw_body`: same as A
-- `signature`: `094e9a3676c751842645f2081f1b21e55f2eacece223d31b6d3152a7ddcd9d4c`
-- Expected: `verify_webhook_signature(body, sig, current, previous) == True`
+Computed by Razorpay's client over `f"{razorpay_order_id}|{razorpay_payment_id}"`
+with the tenant's `key_secret`.
 
-**Vector C (no fallback configured, current secret valid):**
+### Vector P1: client callback verification
 
-- `raw_body`: same as A
-- `signature`: Vector A signature
-- Expected: `verify_webhook_signature(body, sig, current, None) == True`
+| Field | Value |
+|---|---|
+| `key_secret` | `canonical_key_secret` |
+| `razorpay_order_id` | `order_CANONICAL` |
+| `razorpay_payment_id` | `pay_CANONICAL` |
+| Signed string | `order_CANONICAL|pay_CANONICAL` |
+| Expected hex digest | Computed at runtime in `tests/test_signatures.py::test_canonical_payment_vector` |
 
-**Vector D (tampered body, original signature):**
+`verify_payment_signature(order_id, payment_id, signature, key_secret)`
+returns `True` iff the signature matches.
 
-- `raw_body`: amount field changed from 50000 to 99999
-- `signature`: Vector A signature
-- Expected: `verify_webhook_signature(body, sig, current, previous) == False`
+## Simulator wire format
 
-**Vector E (signature from unrelated secret):**
+`scripts/razorpay-simulator.py` builds Razorpay-shaped event payloads with the
+following top-level structure:
 
-- `raw_body`: same as A
-- `signature`: `41b33af756109f61268ec43350f8b6256fcb9bbdb6c9c241a2abffcc0d7c2b96`
-- Expected: `verify_webhook_signature(body, sig, current, previous) == False`
-
-**Vector F (boundary: empty body, current secret):**
-
-- `raw_body`: `b""`
-- `signature`: `b07c2754a5fc96f1416a267e07eee13473292478d550782e9faf60755e3bbc9b`
-- Expected: `verify_webhook_signature(b"", sig, current, previous) == True`
-
-## Local Runner
-
-```python
-from razorpay_checkout.signatures import verify_webhook_signature
-
-SECRET_CURRENT = "whsec_test_current_v1"
-SECRET_PREVIOUS = "whsec_test_previous_v0"
-
-BODY_A = b'{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_test_001","order_id":"order_test_001","amount":50000,"currency":"INR","status":"captured"}}}}'
-BODY_D = b'{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_test_001","order_id":"order_test_001","amount":99999,"currency":"INR","status":"captured"}}}}'
-
-SIG_A          = "367afa4837c3e9729fe83cd0f3dff9c786f7133fb15828082bf833a8ca815588"
-SIG_B_PREVIOUS = "094e9a3676c751842645f2081f1b21e55f2eacece223d31b6d3152a7ddcd9d4c"
-SIG_E_WRONG    = "41b33af756109f61268ec43350f8b6256fcb9bbdb6c9c241a2abffcc0d7c2b96"
-SIG_F_EMPTY    = "b07c2754a5fc96f1416a267e07eee13473292478d550782e9faf60755e3bbc9b"
-
-assert verify_webhook_signature(BODY_A, SIG_A,          SECRET_CURRENT, SECRET_PREVIOUS) is True,  "Vector A"
-assert verify_webhook_signature(BODY_A, SIG_B_PREVIOUS, SECRET_CURRENT, SECRET_PREVIOUS) is True,  "Vector B"
-assert verify_webhook_signature(BODY_A, SIG_A,          SECRET_CURRENT, None)            is True,  "Vector C"
-assert verify_webhook_signature(BODY_D, SIG_A,          SECRET_CURRENT, SECRET_PREVIOUS) is False, "Vector D"
-assert verify_webhook_signature(BODY_A, SIG_E_WRONG,    SECRET_CURRENT, SECRET_PREVIOUS) is False, "Vector E"
-assert verify_webhook_signature(b"",    SIG_F_EMPTY,    SECRET_CURRENT, SECRET_PREVIOUS) is True,  "Vector F"
-print("OK: all 6 vectors passed")
+```json
+{
+  "id": "evt_<uuid>",
+  "entity": "event",
+  "event": "<event_type>",
+  "created_at": <unix_seconds>,
+  "contains": [...],
+  "payload": { ...event-specific entities... }
+}
 ```
 
-## Source of Truth
+The signature is computed over the serialised JSON body (compact, no
+whitespace) and sent as `X-Razorpay-Signature`. The producer fast-parses the
+same body to extract `id`, `event`, and the entity's `order_id`.
 
-The vectors here, the unit tests in `razorpay_checkout/tests/test_signatures.py`, and the canonical payloads emitted by `scripts/razorpay-simulator.py` share one source of truth. A change to any one must update all three.
+### Sample invocation
 
-## Output
+```bash
+python scripts/razorpay-simulator.py payment.captured \
+    --tenant t_dev \
+    --order-id order_TEST_001 \
+    --payment-id pay_TEST_001 \
+    --amount 50000 \
+    --secret dev_webhook_secret \
+    --url http://localhost:8000/payments/webhook
+```
 
-Report PASS or FAIL per vector (A through F), plus the constant-time check from step 2 and the rotation fallback check from step 3. Do not skip the constant-time check even if all vectors PASS.
+Expected response: HTTP 200 with body `{"status":"queued","correlation_id":"<uuid>"}`.
+
+### Replay behavior
+
+Re-running the same command with the same `--event-id` (use the value the
+simulator prints back) produces the same `MessageDeduplicationId`, which SQS
+FIFO suppresses inside its 5-minute dedup window. Inside that window, the
+second POST returns 200 but the consumer never sees the duplicate message.
+
+## When to update this file
+
+Update this file in the **same commit** as any change to:
+
+- `razorpay_checkout/signatures.py` (signature algorithm or comparison)
+- `razorpay_checkout/webhook_producer.py` (signature header name or body
+  pre-parse shape)
+- `scripts/razorpay-simulator.py` (payload structure or signing input)
+- `tests/test_signatures.py` (canonical vector constants)
+
+A drift between any two of these breaks local development and CI silently.
