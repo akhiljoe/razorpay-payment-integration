@@ -6,18 +6,22 @@ metadata. The contextvar binding flows through `asyncio` automatically.
 
 structlog binds the contextvar via `merge_contextvars`, so any logger call
 emitted after `set_correlation_id` will carry the `correlation_id` field.
-"""
 
-from __future__ import annotations
+Note: `Request` is imported at module top (not under TYPE_CHECKING) and this
+module does NOT use `from __future__ import annotations`. FastAPI introspects
+dependency function signatures via `typing.get_type_hints()` at route
+registration; that resolution needs `Request` in the runtime module namespace.
+With future annotations + TYPE_CHECKING imports, FastAPI silently fell back to
+treating the dependency's `request` parameter as a query param, yielding
+mysterious 422s with `loc: ["query","request"]` on every route that depended
+on `correlation_id_dependency`.
+"""
 
 import uuid
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
 
 import structlog
-
-if TYPE_CHECKING:
-    from fastapi import Request
+from fastapi import Request
 
 _correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 

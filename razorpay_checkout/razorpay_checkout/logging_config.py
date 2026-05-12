@@ -44,7 +44,7 @@ def _redact(value: Any) -> Any:
         return redacted
     if isinstance(value, dict):
         return {k: _redact(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         cls = type(value)
         return cls(_redact(v) for v in value)
     return value
@@ -101,7 +101,10 @@ def configure_logging(level: str | int | None = None) -> None:
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        # No explicit `file=` so structlog resolves sys.stdout at log time, not at
+        # factory construction. This avoids stale-fd errors when pytest's capture
+        # machinery (or any other test harness) replaces sys.stdout between tests.
+        logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
