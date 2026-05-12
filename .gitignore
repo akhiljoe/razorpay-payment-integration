@@ -34,3 +34,12 @@ CLAUDE.local.md
 .idea/
 .DS_Store
 Thumbs.db
+
+# Graphify / code-graph tooling
+graphify-out/
+
+# Test / coverage extras
+htmlcov/
+.tox/
+coverage.xml
+*.cover
