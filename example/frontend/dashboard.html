@@ -75,11 +75,34 @@
     box-shadow: 0 0 8px var(--good);
     animation: pulse-dot 2.2s ease-in-out infinite;
   }
-  .topbar .brand .dot.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .topbar .brand .dot.bad {
+    background: var(--bad);
+    box-shadow: 0 0 8px var(--bad);
+    animation: none;     /* B5: freeze the pulse when health is bad */
+    opacity: 1;
+  }
   @keyframes pulse-dot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50%      { opacity: 0.5; transform: scale(0.85); }
   }
+
+  /* B12: stale-data banner — when the last refresh failed, dim the layout
+     and warn that data is stale. */
+  body.stale .layout { opacity: 0.6; filter: grayscale(0.3); }
+  #stale-banner {
+    display: none;
+    background: var(--bad-bg);
+    border-bottom: 1px solid var(--bad);
+    color: var(--bad);
+    padding: 8px 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    text-align: center;
+    position: sticky;
+    top: 48px;
+    z-index: 40;
+  }
+  body.stale #stale-banner { display: block; }
 
   .env-badge {
     display: inline-flex; align-items: center; gap: 6px;
@@ -964,19 +987,23 @@
   <div class="refresh-status" id="refresh-status">never refreshed</div>
 </div>
 
+<!-- Stale data banner — shown when the last refresh failed. -->
+<div id="stale-banner">⚠ Last refresh failed — data shown below may be stale. Click Refresh to retry.</div>
+
 <!-- Alarm banner (only visible when DLQ depth > 0 or stuck-paid > 0) -->
 <div id="alarm-banner" class="alarm-banner">
   <div class="title">⚠ ALARM</div>
   <div id="alarm-body"></div>
 </div>
 
-<!-- Today's KPIs strip -->
+<!-- Today's KPIs strip — JS renders the full content; placeholders are
+     intentionally generic to avoid a label flicker on page load. -->
 <div class="kpi-strip" id="kpi-strip">
-  <div class="kpi"><div class="label">paid today</div><div class="value">—</div></div>
-  <div class="kpi"><div class="label">fulfilled today</div><div class="value">—</div></div>
-  <div class="kpi"><div class="label">failed today</div><div class="value">—</div></div>
-  <div class="kpi"><div class="label">in-flight</div><div class="value">—</div></div>
-  <div class="kpi"><div class="label">stuck paid (&gt;15m)</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">loading…</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">loading…</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">loading…</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">loading…</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">loading…</div><div class="value">—</div></div>
 </div>
 
 <!-- ============ Three-column layout ============ -->
@@ -1028,8 +1055,6 @@
       <div class="msg">Select a transaction on the left to trace its journey through the payment pipeline.</div>
     </div>
 
-    <div id="failure-banner-host"></div>
-
     <div class="panel">
       <div class="panel-title">State Machine</div>
       <div id="state-graph" class="state-graph"></div>
@@ -1039,6 +1064,9 @@
       <div class="panel-title">
         Payment Journey <span class="meta" id="journey-step-count"></span>
       </div>
+      <!-- B7: failure banner is now adjacent to the journey it describes,
+           so the on-screen ✕ red step and the spotlight share viewport. -->
+      <div id="failure-banner-host"></div>
       <div class="journey-summary" id="journey-summary"></div>
       <div id="journey"></div>
     </div>
@@ -1466,12 +1494,20 @@ function renderRecentOrders() {
     completed: { label: "✓ Completed",    cls: "group-completed", open: false, orders: [] },
     refunded:  { label: "↩ Refunded",     cls: "group-refunded",  open: false, orders: [] },
   };
-  visible.forEach(o => {
-    if (["failed", "fulfillment_failed"].includes(o.status)) groups.errors.orders.push(o);
-    else if (o.status === "fulfilled") groups.completed.orders.push(o);
-    else if (o.status === "refunded")  groups.refunded.orders.push(o);
-    else groups.inflight.orders.push(o);
-  });
+  const bucketOf = (o) => {
+    if (["failed", "fulfillment_failed"].includes(o.status)) return "errors";
+    if (o.status === "fulfilled") return "completed";
+    if (o.status === "refunded")  return "refunded";
+    return "inflight";
+  };
+  visible.forEach(o => { groups[bucketOf(o)].orders.push(o); });
+
+  // B9: auto-expand the group that contains the currently selected order so
+  // the highlighted card is always visible, not hidden in a collapsed section.
+  if (currentOrderId) {
+    const selOrder = visible.find(o => o.id === currentOrderId);
+    if (selOrder) groups[bucketOf(selOrder)].open = true;
+  }
   const html = Object.entries(groups)
     .filter(([_, g]) => g.orders.length > 0)
     .map(([_, g]) => `
@@ -1875,16 +1911,21 @@ function renderJourney(flow) {
     if ($("details-order-events")) $("details-order-events").open = true;
   }
   // #9: compute durations between consecutive timestamped done steps.
-  // Walk in order; for each step with tsIso, find the previous step that
-  // also had tsIso and compute ms diff.
+  // B11: only compute a delta when the previous timestamped step is in the
+  // same lane OR the immediately previous lane (no skipped lanes between).
+  // Cross-lane gaps inflate wall-clock with idle time and mislead.
   let prevIso = null;
+  let prevLaneIdx = -1;
+  let currentLaneIdx = -1;
   steps.forEach(s => {
-    if (s.lane || !s.tsIso) return;
-    if (prevIso) {
+    if (s.lane) { currentLaneIdx++; return; }
+    if (!s.tsIso) return;
+    if (prevIso && (currentLaneIdx - prevLaneIdx) <= 1) {
       const diffMs = new Date(s.tsIso).getTime() - new Date(prevIso).getTime();
       if (diffMs >= 0) s.deltaMs = diffMs;
     }
     prevIso = s.tsIso;
+    prevLaneIdx = currentLaneIdx;
   });
 
   // #7: map step title → webhook event type so DB rows can scroll to step.
@@ -2241,11 +2282,13 @@ async function runScenario(s) {
     SCENARIO_RESULTS[s.id] = { ok: res.ok, msg: res.msg, running: false };
     log("scenario " + (res.ok ? "PASS" : "FAIL") + ": " + s.title + " — " + res.msg, res.ok ? "pass" : "fail");
     toast("Scenario " + (res.ok ? "PASS" : "FAIL"), s.title, res.ok ? "success" : "error");
-    if (res.orderId) {
+    // B4: only auto-select the scenario's order if the user hasn't picked
+    // a different one mid-run. Otherwise just refresh state in place.
+    if (res.orderId && (!currentOrderId || currentOrderId === res.orderId)) {
       currentOrderId = res.orderId;
       if (res.flow) currentRzpOrderId = res.flow.order.razorpay_order_id;
-      await refresh();
     }
+    await refresh();
     renderScenarios();
     return res;
   } catch (e) {
@@ -2536,6 +2579,8 @@ async function refresh() {
     log("dashboard fetch error: " + e.message, "error");
   }
   if ($("health-dot")) $("health-dot").classList.toggle("bad", !healthy);
+  // B12: dim the layout when the last fetch failed.
+  document.body.classList.toggle("stale", !healthy);
 }
 
 // ============================================================
