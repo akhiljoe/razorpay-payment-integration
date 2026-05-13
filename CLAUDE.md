@@ -79,6 +79,11 @@ Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` o
 - **OpenTelemetry**: exporter selected at startup via `OTEL_EXPORTER` env var (`stdout` | `xray` | `otlp`). No application branching on the exporter.
 - `payments.is_authoritative=TRUE` only on `payment.captured`. Reconciliation queries authoritative payments only.
 - Admin routes require `X-Admin-Api-Key` matching `RazorpayConfig.admin_api_key`. If `None`, the route returns `403`.
+- **Dashboards** (see DESIGN 17.14 / 17.15 + PHASES.md Phase 17):
+  - `/dev/dashboard` (full Mission Control, write-capable scenario harness) is gated on `RAZORPAY_DEV_ROUTES_ENABLED=true`. Must be unset in any deployed environment.
+  - `/admin/dashboard` (read-only) is gated on `X-Admin-Api-Key`. The frontend stores the key in `sessionStorage`, never `localStorage`.
+  - State-graph visited detection in both dashboards reads `*_at` timestamps from the order row, never the live `status` string — otherwise terminal-on-branch orders (`failed`, `refunded`) render their prior lanes grey.
+  - Aggregated `/dev/dashboard-data` and `/admin/dashboard-data` endpoints scope per-order webhooks via JSONB path on the payment/refund/order entity, not by tenant alone.
 
 ## Gotchas
 

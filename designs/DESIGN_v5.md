@@ -1751,3 +1751,78 @@ Read-only commands (`list`, `inspect`) and any `--dry-run` pass
 pass `False` so the message stays locked through the publish/delete
 call. The cost is one extra RPC per message on read paths; in DLQ
 operations this is negligible.
+
+### 17.14 Dashboard "visited state" must be timestamp-driven, not status-string-driven (Phase 17)
+
+**Rule.** When rendering a state-machine graph that may end on a branch
+(`failed`, `fulfillment_failed`, `refunded`), determine which main-path
+nodes to colour green by checking the order's per-state timestamps
+(`created_at`, `attempted_at`, `authorized_at`, `paid_at`,
+`fulfilled_at`), not by walking the main-path array up to the current
+`status`. The same rule applies to the per-step Payment Journey: each
+step's `done` flag must look at the underlying evidence (timestamp,
+webhook row, or payment row) rather than the live status field.
+
+**Why.** A status string is a single point on the graph; it loses the
+history of which states were actually visited. An order that reached
+`paid` and then `failed` (e.g. fulfillment refunded) renders all-grey
+under status-only logic because `failed` is not in
+`["initializing","created","attempted","authorized","paid","fulfilled"]`.
+The same bug surfaces on `refunded` orders where users expect the
+"Paid" and "Fulfilled" lanes to stay green. Trusting `*_at` columns
+gives a correct visited-set regardless of the terminal branch the order
+landed on.
+
+**How to apply.** Both dashboards' `renderStateGraph(orderArg)` accept
+either a status string (legacy) or the full order object; when given
+the order, they probe `o[`${state}_at`]` for visited detection. The
+Payment Journey's `buildJourneySteps()` follows the same pattern — each
+step's `done` predicate names the specific timestamp or row that
+counts as evidence (e.g. `evAttempt && evAttempt.trigger === "verify-callback"`
+for the signature-verification step). Mixing the two evidence sources
+inside a single step is forbidden; pick the strongest one and stick to
+it so the visual stays explainable.
+
+**Related polish from the same audit (single commit, all caught by manual review):**
+
+- **Duration badges between adjacent lanes only.** `Δms` is computed
+  only when the previous and current lane indices differ by exactly 1.
+  Cross-gap deltas are misleading: a 12 s "gap" between *Customer
+  authorizes* and *Order fulfilled* on a `failed` order is not a
+  meaningful latency measurement because the intervening lanes were
+  skipped.
+- **Per-order webhook scoping in the aggregated endpoint.**
+  `/dev/dashboard-data?order_id=...` and `/admin/orders/{id}` filter
+  `webhook_events` by JSONB path
+  (`payload->'payload'->'payment'->'entity'->>'order_id'`), not by
+  tenant alone, so a single open detail panel never shows another
+  order's `refund.processed` webhook.
+- **Stale data is visible.** A failed refresh adds `body.stale` to grey
+  the panels and pins a `#stale-banner` ribbon. The previous behavior
+  (toast that disappears in 6 s) made it possible to debug against
+  silently-frozen data.
+- **Selected order auto-expands its bucket** so toggling a KPI filter
+  or running a scenario never hides the highlighted card inside a
+  collapsed `<details>`.
+
+### 17.15 Admin API key must not survive a closed tab (Phase 17)
+
+**Rule.** The admin dashboard's `X-Admin-Api-Key` lives in
+`sessionStorage`, never `localStorage`. The base URL (non-secret) may
+stay in `localStorage`.
+
+**Why.** `localStorage` persists across tab close, browser restart, and
+across-tab reads from the same origin. Any persistent-XSS payload on a
+sibling page on the same origin can exfiltrate the key in one read. The
+key itself permits read-only access (the `/admin/*` routes are all
+GETs), but it lifts the rate limit and exposes per-tenant data; treat
+it as a session token. `sessionStorage` is tab-scoped and cleared on
+close, shrinking the blast radius to the lifetime of the open tab.
+
+**How to apply.** `example/frontend/admin-dashboard.html` reads the key
+from `sessionStorage.getItem("razorpay_admin_key")` on load and writes
+it back via `sessionStorage.setItem` in the save handler. The auth
+modal re-opens automatically on first load and after any `403`
+response. Production deployments behind a per-operator auth proxy
+should treat this storage as a fallback only — prefer a short-lived
+OIDC token injected by the proxy.

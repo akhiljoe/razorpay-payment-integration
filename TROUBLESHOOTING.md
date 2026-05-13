@@ -247,6 +247,36 @@ Razorpay can't deliver webhooks to localhost. The frontend self-simulates after 
 - Pump not running (Terminal B).
 - Failure path: the storefront also self-simulates `payment.failed` since Phase 14 — confirm `shop.html` has that branch in `onRazorpayFailure`.
 
+### `/dev/dashboard` returns 404 (Hit, Phase 17)
+
+`RAZORPAY_DEV_ROUTES_ENABLED` is unset or `false`. Set it in
+`example/backend/.env` (`RAZORPAY_DEV_ROUTES_ENABLED=true`) and restart
+the backend. This flag must remain `false` in any deployed environment;
+the admin dashboard is the prod-safe alternative.
+
+### `/admin/dashboard` returns 403, modal won't dismiss (Hit, Phase 17)
+
+The key you typed doesn't match `RAZORPAY_ADMIN_API_KEY`. The key
+lives in `sessionStorage` and is cleared on tab close (DESIGN 17.15)
+— re-open the env badge → paste the right key. If you don't have it,
+read it out of `example/backend/.env`
+(`RAZORPAY_ADMIN_API_KEY=local-dev-admin-key` by default in dev).
+
+### Dashboard shows a red ribbon "Last refresh failed — data shown below may be stale" (Hit, Phase 17 fix)
+
+The auto-refresh hit a network/backend error. The data on screen is
+the last successful fetch, greyed out to make this obvious. Click
+Refresh to retry. If it keeps failing: check the backend logs and the
+local pump (Terminal B). The banner clears on the next successful
+refresh.
+
+### Dashboard state-graph shows a `refunded` order with grey "Paid" / "Fulfilled" lanes (Hit, Phase 17 fix)
+
+Old `dashboard.html` walked the main-path array up to the current
+`status` — `refunded` is off-path so prior states rendered grey. Pull
+the Phase 17 commit; visited-state detection now reads `*_at`
+timestamps. See DESIGN 17.14.
+
 ---
 
 ## DLQ-related

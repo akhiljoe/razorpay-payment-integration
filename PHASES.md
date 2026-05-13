@@ -278,12 +278,86 @@ Phases grouped by the deliverable they produced, not strictly by commit. Several
 
 ---
 
-## (Phases 17-18, future)
+## Phase 17 — Production-grade dashboards (Mission Control)
 
-- **Phase 17:** Dockerfiles, build-and-push script, first real `cdk deploy`, smoke against deployed URL.
-- **Phase 18:** TEST_PLAN.md, SCALE_PLAN.md, project-closeout docs.
+**Goal:** turn the Phase 13 dev dashboard into a two-surface ops UI: a
+local-only `/dev/dashboard` for development + scenario regression, and
+a read-only `/admin/dashboard` that is safe to expose on a deployed
+environment. Both share a Mission Control aesthetic (dark theme,
+JetBrains Mono + IBM Plex Sans, cyan accent) and the same 17-step
+Payment Journey, but read from disjoint route gates.
 
-Both are optional; phases 1-16 form a self-contained, locally-shippable artifact.
+**Shipped:**
+- **Backend gating:**
+  - `RAZORPAY_DEV_ROUTES_ENABLED` env flag gates `/dev/*` (dashboard,
+    `/dev/reset`, `/dev/simulate`, `/dev/flow/{id}`). Default `false`;
+    must be unset in any prod deployment.
+  - `X-Admin-Api-Key` header gates `/admin/*` (read-only). `None` →
+    `403`. Aggregated endpoints: `/admin/dashboard-data`,
+    `/admin/kpis`, `/admin/orders/{order_id}`.
+- **Aggregated endpoint** `/dev/dashboard-data` +
+  `/admin/dashboard-data` with filter params (`status_in`,
+  `today_only`, `stuck_paid`, `tenant_id`) so the KPI strip and grouped
+  Recent list share a single round-trip.
+- **Per-order JSONB scoping** in the selected-order block so the
+  detail panel only shows webhooks that name the open order.
+- **Frontend:**
+  - `example/frontend/dashboard.html` (Mission Control): KPI strip
+    with six tile-filters, alarm banner (DLQ > 0, stuck-paid > 0),
+    tenant filter, grouped Recent (`Errors` / `In-flight` /
+    `Completed` / `Refunded`), Payment Journey with lane headers +
+    per-stage `Δms` badges (adjacent lanes only), test-scenario
+    harness, snapshot copy.
+  - `example/frontend/admin-dashboard.html`: read-only mirror gated by
+    admin API key; same Journey + grouped Recent + Snapshot panel.
+- **Audit-driven polish (single commit):**
+  - Timestamp-driven state-graph visited detection (DESIGN 17.14).
+  - Admin key migrated to `sessionStorage` (DESIGN 17.15).
+  - Stale-data banner + `body.stale` opacity cue on refresh failure.
+  - Selected order auto-expands its bucket.
+  - Status-adaptive Outcome step (different copy + check/✕ per terminal).
+- **Operational scripts:**
+  - `scripts/prod-smoke.py` — read-only `/health` + `/admin/kpis` +
+    `/admin/dashboard-data` health probe; exit non-zero on regression.
+  - `scripts/check-stuck-paid.py` — direct DB query for orders stuck
+    at `paid` past a threshold; CSV output for pipelines.
+  - `scripts/reconcile-diff.py` — daily reconcile cron against
+    `/payments/reconcile`; CSV mode for analysis.
+
+**Why:**
+- The Phase 13 dashboard was a dev-only tool that committed to no
+  network policy — fine for local, unsafe for any environment with a
+  routable URL. Splitting into `/dev/*` (env-flag-gated, write-capable)
+  and `/admin/*` (header-gated, read-only) lets the same UI ship in
+  both contexts without leaking dev affordances.
+- A single aggregated endpoint avoids the N+1 round-trips the Phase 13
+  dashboard had between KPIs, Recent, and detail panels — auto-refresh
+  is now one request per cycle.
+- The audit-driven polish surfaced from a user-led design review; each
+  fix has a one-line learning embedded in DESIGN 17.14.
+
+**Key files:** `example/backend/main.py` (route gates + aggregated
+endpoint + JSONB scoping), `example/backend/.env`
+(`RAZORPAY_DEV_ROUTES_ENABLED`, `RAZORPAY_ADMIN_API_KEY`),
+`example/frontend/dashboard.html`,
+`example/frontend/admin-dashboard.html`, `scripts/prod-smoke.py`,
+`scripts/check-stuck-paid.py`, `scripts/reconcile-diff.py`.
+
+**Learnings captured:**
+- Section 17.14 (dashboard visited-state must be timestamp-driven,
+  plus per-step duration badges, JSONB webhook scoping, stale-data
+  banner, selected-order auto-expand).
+- Section 17.15 (admin API key in `sessionStorage`, not
+  `localStorage`).
+
+---
+
+## (Phases 18-19, future)
+
+- **Phase 18:** Dockerfiles, build-and-push script, first real `cdk deploy`, smoke against deployed URL.
+- **Phase 19:** TEST_PLAN.md, SCALE_PLAN.md, project-closeout docs.
+
+Both are optional; phases 1-17 form a self-contained, locally-shippable artifact.
 
 ---
 

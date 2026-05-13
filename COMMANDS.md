@@ -102,10 +102,26 @@ uv run --project ../../razorpay_checkout uvicorn main:app --reload --port 8000
 
 Reachable URLs:
 - `http://localhost:8000/health`
-- `http://localhost:8000/dev/dashboard` — Payment Journey + 11 scenarios
+- `http://localhost:8000/dev/dashboard` — Mission Control: KPIs + Payment Journey + 11 scenarios. Gated on `RAZORPAY_DEV_ROUTES_ENABLED=true`.
+- `http://localhost:8000/admin/dashboard` — read-only ops view. Gated on header `X-Admin-Api-Key: $RAZORPAY_ADMIN_API_KEY`. The browser modal prompts on first load and stores the key in `sessionStorage` (cleared on tab close — see DESIGN 17.15).
 - `http://localhost:8000/dev/shop` — buyer storefront
 - `http://localhost:8000/payments/orders` (POST)
 - `http://localhost:8000/payments/webhook/{tenant_id}` (POST from Razorpay or simulator)
+
+### Operational scripts (Phase 17)
+
+```bash
+# Health probe against deployed URL (non-zero exit on regression):
+BASE_URL=https://api.example.com ADMIN_API_KEY=$(aws ssm get-parameter --name /razorpay/admin/key --with-decryption --query Parameter.Value --output text) \
+  python scripts/prod-smoke.py
+
+# Daily reconcile against /payments/reconcile; non-zero exit on mismatch:
+BASE_URL=... ADMIN_API_KEY=... python scripts/reconcile-diff.py
+python scripts/reconcile-diff.py --csv > mismatches.csv
+
+# Stuck-at-paid orders (direct DB; cron-friendly):
+python scripts/check-stuck-paid.py --threshold-minutes 30 --csv > stuck.csv
+```
 
 ### Start local pump (drain SQS queues)
 

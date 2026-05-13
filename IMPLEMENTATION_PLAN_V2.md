@@ -438,6 +438,82 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 
 ---
 
+## Phase: Production-Grade Dashboards (Mission Control)
+
+> Depends on: webhook consumer + admin routes + observability. Lands
+> the two operator surfaces required before a deployed environment can
+> be debugged from the browser.
+
+- [x] **What:** Gate `/dev/*` (dashboard, reset, simulate, flow) on
+  `RAZORPAY_DEV_ROUTES_ENABLED` env flag; default `false`.
+  **Output:** `_require_dev_routes()` dependency installed on every
+  `/dev/*` route; manual smoke against `RAZORPAY_DEV_ROUTES_ENABLED=0`
+  returns 404 for `/dev/dashboard`.
+
+- [x] **What:** Gate `/admin/*` on `X-Admin-Api-Key` matching
+  `RazorpayConfig.admin_api_key`; `None` ⇒ `403` for every admin route.
+  **Output:** `_require_admin_key()` dependency installed on
+  `/admin/dashboard-data`, `/admin/kpis`, `/admin/orders/{id}`.
+
+- [x] **What:** Implement aggregated `/dev/dashboard-data` and
+  `/admin/dashboard-data` endpoints accepting `status_in`,
+  `today_only`, `stuck_paid`, `tenant_id`, `order_id`. Per-order
+  webhook scoping uses JSONB path
+  (`payload->'payload'->'payment'->'entity'->>'order_id'`) and falls
+  back to refund + order entities.
+  **Output:** One request returns kpis + queues + recent + selected
+  order's events/webhooks/payments/refunds. Selected-order webhooks
+  contain only rows naming that order.
+
+- [x] **What:** Ship the Mission Control dev dashboard
+  (`example/frontend/dashboard.html`): KPI strip with six filter
+  tiles, alarm banner for DLQ + stuck-paid, tenant filter, grouped
+  Recent (Errors / In-flight / Completed / Refunded), 17-step Payment
+  Journey with lane headers and per-stage Δms badges (adjacent lanes
+  only), 11-scenario regression harness, snapshot copy.
+  **Output:** `dashboard.html` renders against `/dev/dashboard-data`;
+  all 11 scenarios pass against a running pump.
+
+- [x] **What:** Ship the read-only admin dashboard
+  (`example/frontend/admin-dashboard.html`): same Journey + grouped
+  Recent + Snapshot panel, no scenario runner, no `/dev/reset`. Admin
+  API key lives in `sessionStorage` (DESIGN 17.15). On refresh
+  failure: body gets `stale` class, sticky `#stale-banner` shows.
+  **Output:** `admin-dashboard.html` renders against
+  `/admin/dashboard-data`; `403` reopens the auth modal; key is gone
+  after tab close.
+
+- [x] **What:** Audit-driven polish (single commit) captured in DESIGN
+  17.14: state-graph visited detection uses `*_at` timestamps (not
+  status string), Δms badges only between adjacent lanes, JSONB
+  webhook scoping in the selected-order block, stale-data banner on
+  refresh failure, selected order auto-expands its bucket,
+  status-adaptive Outcome step.
+  **Output:** A `failed`/`refunded` order renders prior main-path
+  lanes green; the detail panel never shows a sibling order's
+  webhooks; a network failure visually marks the data as stale.
+
+- [x] **What:** Add operational scripts: `scripts/prod-smoke.py`
+  (read-only `/health` + KPIs against deployed URL),
+  `scripts/check-stuck-paid.py` (direct-DB stuck-at-paid query with
+  CSV output), `scripts/reconcile-diff.py` (daily reconcile against
+  `/payments/reconcile`, non-zero exit on mismatch).
+  **Output:** Each script runs with `--help`; cron-compatible exit
+  codes; example invocations in their module docstrings.
+
+**Phase gate.**
+- `pytest tests/test_admin_routes.py tests/test_dev_routes.py` green.
+- `dashboard.html` "Run all scenarios in sequence" → 11/11 PASS.
+- Manual: visit `/admin/dashboard` with no key → modal opens; with
+  wrong key → 403 toast; with right key → data loads.
+- DESIGN_v5 Section 17.14 + 17.15 entries present.
+- `RAZORPAY_DEV_ROUTES_ENABLED=false` exists in `.env.example` with a
+  comment warning prod operators.
+
+**Commit:** `git commit -m "dashboards: dev (mission control) + admin (read-only) + ops scripts"`
+
+---
+
 ## Phase: Documentation, Deferrals, and Scaling Triggers
 
 > Depends on: deployment. Closeout phase.

@@ -60,9 +60,15 @@ cd example/backend && uv run --project ../../razorpay_checkout uvicorn main:app 
 uv run --project razorpay_checkout python scripts/local-pump.py
 
 # Terminal C: open browser
-# http://localhost:8000/dev/dashboard  — 17-step Payment Journey + 11 scenarios
-# http://localhost:8000/dev/shop       — buyer-perspective storefront
+# http://localhost:8000/dev/dashboard   — Mission Control: KPIs + 17-step Payment Journey + 11 scenarios
+# http://localhost:8000/admin/dashboard — read-only ops view (gated by X-Admin-Api-Key)
+# http://localhost:8000/dev/shop        — buyer-perspective storefront
 ```
+
+The dev dashboard is gated on `RAZORPAY_DEV_ROUTES_ENABLED=true` (off by
+default). The admin dashboard is gated on `X-Admin-Api-Key` matching
+`RAZORPAY_ADMIN_API_KEY`. Both are safe to expose in different
+environments: dev locally, admin behind a per-operator proxy.
 
 Full step-by-step in [QUICKSTART.md](QUICKSTART.md).
 
