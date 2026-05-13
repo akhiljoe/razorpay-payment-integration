@@ -41,8 +41,51 @@ import uuid
 
 import aioboto3
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+
+
+# ============================================================
+# Feature flags — environment-gated route exposure.
+#
+# RAZORPAY_DEV_ROUTES_ENABLED:
+#   When "true" (case-insensitive), the /dev/* routes (dashboard, shop,
+#   test-page, simulate, reset, flow, queues) are reachable. Default is
+#   FALSE so production deployments do not expose destructive endpoints
+#   on a public Function URL.
+#
+#   Set to "true" in `example/backend/.env` for local development.
+#   Leave unset (or set to anything else) in production.
+#
+# Use `_require_dev_routes()` as a FastAPI dependency on every /dev/*
+# handler. Disabled routes return 404 (not 403) so attackers can't
+# enumerate which endpoints exist.
+# ============================================================
+def _dev_routes_enabled() -> bool:
+    return os.environ.get("RAZORPAY_DEV_ROUTES_ENABLED", "").lower() == "true"
+
+
+def _require_dev_routes() -> None:
+    if not _dev_routes_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+def _require_admin_key(
+    x_admin_api_key: str | None = Header(default=None, alias="X-Admin-Api-Key"),
+    request: Request = None,  # noqa: B008 - FastAPI injects
+) -> None:
+    """Header-based admin auth for /admin/* routes.
+
+    Reads `admin_api_key` from `RazorpayConfig`. If unset, the route is
+    treated as closed (403 always). Compare with `hmac.compare_digest` to
+    avoid timing leaks.
+    """
+    config = request.app.state.razorpay_config
+    expected = config.admin_api_key.get_secret_value() if config.admin_api_key else None
+    if not expected:
+        raise HTTPException(status_code=403, detail="admin disabled")
+    if not x_admin_api_key or not hmac.compare_digest(expected, x_admin_api_key):
+        raise HTTPException(status_code=403, detail="invalid admin key")
 
 from razorpay_checkout import (
     DefaultFulfillmentHook,
@@ -120,13 +163,13 @@ app = FastAPI(lifespan=lifespan, title="Razorpay Checkout dev backend")
 app.include_router(payments_router, prefix="/payments")
 
 
-@app.get("/dev/test-page", response_class=HTMLResponse)
+@app.get("/dev/test-page", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
 async def test_page(_request: Request) -> FileResponse:
     """Serve the dev test page HTML. See example/frontend/test_page.html."""
     return FileResponse(FRONTEND_DIR / "test_page.html", media_type="text/html")
 
 
-@app.get("/dev/shop", response_class=HTMLResponse)
+@app.get("/dev/shop", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
 async def dev_shop(_request: Request) -> FileResponse:
     """Buyer-perspective storefront simulation. Shows a product, opens the
     real Razorpay checkout modal, and walks through the confirmation
@@ -134,7 +177,7 @@ async def dev_shop(_request: Request) -> FileResponse:
     return FileResponse(FRONTEND_DIR / "shop.html", media_type="text/html")
 
 
-@app.get("/dev/widget.js")
+@app.get("/dev/widget.js", dependencies=[Depends(_require_dev_routes)])
 async def widget_js(_request: Request) -> FileResponse:
     """Serve the built widget bundle.
 
@@ -145,18 +188,27 @@ async def widget_js(_request: Request) -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    """Public, unauthenticated. Reach for this from load balancers + smoke tests."""
     return {"status": "ok"}
 
 
-# ---------- /dev/dashboard live state UI ----------
+# ---------- /dev/dashboard live state UI (DEV ONLY) ----------
 
 
-@app.get("/dev/dashboard", response_class=HTMLResponse)
+@app.get("/dev/dashboard", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
 async def dev_dashboard(_request: Request) -> FileResponse:
-    """Single-page dev UI that polls /dev/flow and /dev/queues to render the
-    full webhook -> consumer -> fulfillment flow live. Useful for visualizing
-    the state transitions instead of juggling three terminals."""
+    """Single-page dev UI. Local-dev only — gated by RAZORPAY_DEV_ROUTES_ENABLED."""
     return FileResponse(FRONTEND_DIR / "dashboard.html", media_type="text/html")
+
+
+# ---------- /admin/dashboard (PROD-SAFE read-only) ----------
+
+
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard(_request: Request) -> FileResponse:
+    """Production-safe read-only dashboard. Serves the HTML unauthenticated
+    (it's static); the API endpoints it calls require X-Admin-Api-Key."""
+    return FileResponse(FRONTEND_DIR / "admin-dashboard.html", media_type="text/html")
 
 
 def _row_to_dict(row: object) -> dict:
@@ -175,7 +227,7 @@ def _isoformat_dict(d: dict) -> dict:
     return out
 
 
-@app.get("/dev/flow")
+@app.get("/dev/flow", dependencies=[Depends(_require_dev_routes)])
 async def dev_flow_index(request: Request) -> JSONResponse:
     """List recent orders for the dashboard's dropdown."""
     pool = request.app.state.razorpay_pool
@@ -193,8 +245,23 @@ async def dev_flow_index(request: Request) -> JSONResponse:
     )
 
 
-@app.get("/dev/flow/{order_id}")
+@app.get("/dev/flow/{order_id}", dependencies=[Depends(_require_dev_routes)])
 async def dev_flow_detail(order_id: str, request: Request) -> JSONResponse:
+    # Legacy endpoint, now delegates to the aggregated payload's selected
+    # block. Ensures the same JSONB filter (webhook_events scoped to this
+    # order's razorpay_order_id) applies whether the dashboard pulls via
+    # /dev/flow/:id or /dev/dashboard-data. Returns the selected detail
+    # only (no kpis/queues/orders list) for compatibility.
+    full = await _aggregated_dashboard_payload(
+        request, order_id=order_id, recent_limit=0
+    )
+    if full["selected"] is None:
+        raise HTTPException(404, "order not found")
+    return JSONResponse(full["selected"])
+
+
+@app.get("/dev/flow/{order_id}/__legacy_disabled", dependencies=[Depends(_require_dev_routes)])
+async def _dev_flow_detail_legacy(order_id: str, request: Request) -> JSONResponse:
     """Aggregated view of one order: row, payments, refunds, webhook_events,
     order_events. The dashboard polls this every second."""
     pool = request.app.state.razorpay_pool
@@ -244,7 +311,7 @@ async def dev_flow_detail(order_id: str, request: Request) -> JSONResponse:
     )
 
 
-@app.get("/dev/queues")
+@app.get("/dev/queues", dependencies=[Depends(_require_dev_routes)])
 async def dev_queues(request: Request) -> JSONResponse:
     """SQS queue depths so the dashboard can show inflight work."""
     sqs = request.app.state.sqs_client
@@ -366,7 +433,7 @@ def _build_simulator_payload(
     raise HTTPException(400, f"unsupported event_type {event_type!r}")
 
 
-@app.post("/dev/simulate")
+@app.post("/dev/simulate", dependencies=[Depends(_require_dev_routes)])
 async def dev_simulate(payload: dict, request: Request) -> JSONResponse:
     """Build, sign, and POST a canonical Razorpay webhook to the local
     producer route. The dashboard wires every "Fire X" button to this.
@@ -434,7 +501,7 @@ async def dev_simulate(payload: dict, request: Request) -> JSONResponse:
 # ---------- /dev/reset wipe DB + queues ----------
 
 
-@app.post("/dev/reset")
+@app.post("/dev/reset", dependencies=[Depends(_require_dev_routes)])
 async def dev_reset(request: Request) -> JSONResponse:
     """Truncate tenant-scoped tables and purge SQS queues. Re-seed tenant."""
     pool = request.app.state.razorpay_pool
@@ -468,3 +535,272 @@ async def dev_reset(request: Request) -> JSONResponse:
             purged.append(f"{name}: {exc}")
 
     return JSONResponse({"truncated": True, "queues_purged": purged})
+
+
+# ============================================================
+# Aggregated read endpoints — KPIs + dashboard data.
+#
+# These are used by BOTH:
+#   - /dev/dashboard-data (gated by RAZORPAY_DEV_ROUTES_ENABLED)
+#   - /admin/dashboard-data (gated by X-Admin-Api-Key)
+#
+# Centralizing the SQL here means the dev and prod dashboards stay in
+# lockstep. The shared helper does one Postgres round-trip with WITH
+# clauses + one SQS GetQueueAttributes per queue, replacing what was
+# previously 3 separate API calls per dashboard refresh.
+# ============================================================
+
+
+async def _aggregated_dashboard_payload(
+    request: Request,
+    *,
+    order_id: str | None = None,
+    tenant_id: str | None = None,
+    recent_limit: int = 10,
+    status_in: list[str] | None = None,
+    today_only: bool = False,
+    stuck_paid: bool = False,
+) -> dict:
+    pool = request.app.state.razorpay_pool
+    sqs = request.app.state.sqs_client
+    config: RazorpayConfig = request.app.state.razorpay_config
+
+    payload: dict = {
+        "kpis": {},
+        "queues": {},
+        "orders": [],
+        "selected": None,
+        "tenant_id_default": config.tenant_id,
+    }
+
+    async with pool.acquire() as conn:
+        # Today's KPIs in one query. UTC day; the dashboard renders local.
+        kpi_row = await conn.fetchrow(
+            """
+            WITH today AS (
+              SELECT status FROM orders
+               WHERE created_at >= date_trunc('day', NOW())
+                 AND ($1::text IS NULL OR tenant_id = $1)
+            )
+            SELECT
+              COUNT(*) FILTER (WHERE status = 'paid')                AS today_paid,
+              COUNT(*) FILTER (WHERE status = 'fulfilled')           AS today_fulfilled,
+              COUNT(*) FILTER (WHERE status = 'failed')              AS today_failed,
+              COUNT(*) FILTER (WHERE status = 'fulfillment_failed')  AS today_fulfillment_failed,
+              COUNT(*) FILTER (WHERE status = 'refunded')            AS today_refunded,
+              COUNT(*) FILTER (WHERE status IN ('created','attempted','authorized')) AS in_flight,
+              COUNT(*) AS today_total
+              FROM today
+            """,
+            tenant_id,
+        )
+        payload["kpis"] = dict(kpi_row) if kpi_row else {}
+
+        # Stuck-paid: paid > 15 min, not yet fulfilled.
+        stuck = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM orders
+             WHERE status = 'paid'
+               AND paid_at < NOW() - INTERVAL '15 minutes'
+               AND ($1::text IS NULL OR tenant_id = $1)
+            """,
+            tenant_id,
+        )
+        payload["kpis"]["stuck_paid"] = int(stuck or 0)
+
+        # Recent orders. Tenant + optional status / today / stuck filters.
+        # Filters are AND-combined; status_in is OR within itself.
+        filter_clauses = ["($1::text IS NULL OR tenant_id = $1)"]
+        filter_args: list = [tenant_id]
+        if status_in:
+            placeholders = ", ".join(
+                f"${i + 2}" for i in range(len(status_in))
+            )
+            filter_clauses.append(f"status IN ({placeholders})")
+            filter_args.extend(status_in)
+        if today_only:
+            filter_clauses.append("created_at >= date_trunc('day', NOW())")
+        if stuck_paid:
+            filter_clauses.append(
+                "status = 'paid' AND paid_at < NOW() - INTERVAL '15 minutes'"
+            )
+        where_sql = " AND ".join(filter_clauses)
+        rows = await conn.fetch(
+            f"""
+            SELECT id, tenant_id, razorpay_order_id, receipt, status, amount, created_at
+              FROM orders
+             WHERE {where_sql}
+             ORDER BY created_at DESC
+             LIMIT {int(recent_limit)}
+            """,
+            *filter_args,
+        )
+        payload["orders"] = [_isoformat_dict(_row_to_dict(r)) for r in rows]
+
+        # Selected-order detail (if order_id provided).
+        if order_id:
+            try:
+                oid = uuid.UUID(order_id)
+            except ValueError:
+                oid = None
+            if oid is not None:
+                order = await conn.fetchrow(
+                    "SELECT * FROM orders WHERE id = $1", oid
+                )
+                if order is not None:
+                    payments = await conn.fetch(
+                        "SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at",
+                        oid,
+                    )
+                    refunds = await conn.fetch(
+                        "SELECT * FROM refunds WHERE order_id = $1 ORDER BY created_at",
+                        oid,
+                    )
+                    events = await conn.fetch(
+                        "SELECT * FROM order_events WHERE order_id = $1 ORDER BY created_at",
+                        oid,
+                    )
+                    # Webhook events scoped to THIS order. The payload column
+                    # is JSONB; Razorpay puts the order id under different
+                    # paths per event type:
+                    #   payment.captured / .authorized / .failed:
+                    #     payload->'payload'->'payment'->'entity'->>'order_id'
+                    #   refund.processed:
+                    #     payload->'payload'->'refund'->'entity'->>'order_id'
+                    #   order.paid:
+                    #     payload->'payload'->'order'->'entity'->>'id'
+                    # Filtering server-side avoids showing other orders'
+                    # webhooks in the per-order journey view.
+                    wh = await conn.fetch(
+                        """
+                        SELECT id, event_id, event, processing_status, received_at,
+                               correlation_id
+                          FROM webhook_events
+                         WHERE tenant_id = $1
+                           AND (
+                             payload->'payload'->'payment'->'entity'->>'order_id' = $2
+                             OR payload->'payload'->'refund'->'entity'->>'order_id' = $2
+                             OR payload->'payload'->'order'->'entity'->>'id' = $2
+                           )
+                         ORDER BY received_at DESC
+                         LIMIT 20
+                        """,
+                        order["tenant_id"],
+                        order["razorpay_order_id"],
+                    )
+                    payload["selected"] = {
+                        "order": _isoformat_dict(_row_to_dict(order)),
+                        "payments": [_isoformat_dict(_row_to_dict(r)) for r in payments],
+                        "refunds": [_isoformat_dict(_row_to_dict(r)) for r in refunds],
+                        "order_events": [_isoformat_dict(_row_to_dict(r)) for r in events],
+                        "webhook_events": [_isoformat_dict(_row_to_dict(r)) for r in wh],
+                    }
+
+    # Queue depths (4 SQS calls, ~100ms total in prod).
+    for name in (
+        "webhook-events.fifo",
+        "webhook-events-dlq.fifo",
+        "fulfillment-queue.fifo",
+        "fulfillment-dlq.fifo",
+    ):
+        try:
+            url_resp = await sqs.get_queue_url(QueueName=name)
+            attrs = await sqs.get_queue_attributes(
+                QueueUrl=url_resp["QueueUrl"],
+                AttributeNames=[
+                    "ApproximateNumberOfMessages",
+                    "ApproximateNumberOfMessagesNotVisible",
+                ],
+            )
+            a = attrs.get("Attributes", {})
+            payload["queues"][name] = {
+                "visible": int(a.get("ApproximateNumberOfMessages", 0)),
+                "inflight": int(a.get("ApproximateNumberOfMessagesNotVisible", 0)),
+            }
+        except Exception as exc:  # noqa: BLE001
+            payload["queues"][name] = {"error": str(exc)}
+
+    return payload
+
+
+@app.get("/dev/dashboard-data", dependencies=[Depends(_require_dev_routes)])
+async def dev_dashboard_data(
+    request: Request,
+    order_id: str | None = None,
+    tenant_id: str | None = None,
+    status_in: str | None = None,
+    today_only: bool = False,
+    stuck_paid: bool = False,
+) -> JSONResponse:
+    """Single aggregated endpoint replacing /dev/flow + /dev/flow/:id +
+    /dev/queues. Reduces dashboard cold paths from 3 invocations to 1.
+
+    Filters: status_in (CSV of OrderStatus values), today_only, stuck_paid.
+    """
+    status_list = [s.strip() for s in status_in.split(",")] if status_in else None
+    return JSONResponse(
+        await _aggregated_dashboard_payload(
+            request,
+            order_id=order_id,
+            tenant_id=tenant_id,
+            status_in=status_list,
+            today_only=today_only,
+            stuck_paid=stuck_paid,
+        )
+    )
+
+
+# ============================================================
+# /admin/* — production-safe read-only routes.
+# All require X-Admin-Api-Key header. No simulate/reset.
+# ============================================================
+
+
+@app.get("/admin/dashboard-data", dependencies=[Depends(_require_admin_key)])
+async def admin_dashboard_data(
+    request: Request,
+    order_id: str | None = None,
+    tenant_id: str | None = None,
+    status_in: str | None = None,
+    today_only: bool = False,
+    stuck_paid: bool = False,
+) -> JSONResponse:
+    """Aggregated read-only dashboard data. Same shape as
+    /dev/dashboard-data but gated by admin key. Safe to expose on a
+    production Function URL."""
+    status_list = [s.strip() for s in status_in.split(",")] if status_in else None
+    return JSONResponse(
+        await _aggregated_dashboard_payload(
+            request,
+            order_id=order_id,
+            tenant_id=tenant_id,
+            status_in=status_list,
+            today_only=today_only,
+            stuck_paid=stuck_paid,
+        )
+    )
+
+
+@app.get("/admin/kpis", dependencies=[Depends(_require_admin_key)])
+async def admin_kpis(request: Request, tenant_id: str | None = None) -> JSONResponse:
+    """Lightweight KPI-only endpoint for tight loops or external monitors.
+
+    Returns today's counts + stuck-paid + queue depths. Skips the orders
+    list and selected-order detail to keep payload tiny.
+    """
+    full = await _aggregated_dashboard_payload(
+        request, order_id=None, tenant_id=tenant_id, recent_limit=0
+    )
+    return JSONResponse({"kpis": full["kpis"], "queues": full["queues"]})
+
+
+@app.get("/admin/orders/{order_id}", dependencies=[Depends(_require_admin_key)])
+async def admin_order_detail(order_id: str, request: Request) -> JSONResponse:
+    """Single-order flow data. Admin-gated read-only view of one order
+    + its events, webhooks, payments, refunds."""
+    full = await _aggregated_dashboard_payload(
+        request, order_id=order_id, recent_limit=0
+    )
+    if full["selected"] is None:
+        raise HTTPException(404, "order not found")
+    return JSONResponse(full["selected"])

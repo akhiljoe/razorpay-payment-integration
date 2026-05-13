@@ -3,894 +3,2018 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Razorpay Flow Dashboard</title>
+<title>Payment Flow Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #161a21;
-    --panel-2: #1c222b;
-    --border: #2a313c;
-    --text: #d8dee9;
-    --muted: #8a93a1;
-    --accent: #6aa1ff;
-    --good: #4ec07a;
-    --warn: #ffb74d;
-    --bad: #f06c6c;
-    --idle: #4b5363;
-    --code: #c5d3e0;
+    /* Surfaces */
+    --bg:         #0a0d12;
+    --panel:      #10141c;
+    --panel-2:    #161b25;
+    --panel-3:    #1c2230;
+    --border:     #232a37;
+    --border-2:   #2c3445;
+
+    /* Text */
+    --text:       #d9e0ec;
+    --text-2:     #aab2c0;
+    --muted:      #6b7484;
+    --idle:       #475063;
+    --code:       #c5d3e0;
+
+    /* Accent (Mission Control cyan) */
+    --accent:     #00d4ff;
+    --accent-dim: #0099bf;
+    --accent-bg:  #0a2733;
+
+    /* Status */
+    --good:       #22c55e;
+    --good-bg:    #0d1f15;
+    --warn:       #f59e0b;
+    --warn-bg:    #1f1709;
+    --bad:        #ef4444;
+    --bad-bg:     #1f0c0c;
+    --info:       #818cf8;
+
+    --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-2: 0 8px 24px rgba(0,0,0,0.5);
   }
+
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-  h1, h2, h3 { margin: 0 0 8px 0; font-weight: 600; }
-  h1 { font-size: 20px; }
-  h2 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.45 "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .mono, code, pre, kbd { font-family: "JetBrains Mono", SFMono-Regular, Consolas, monospace; }
+  button { font-family: inherit; }
+  ::selection { background: var(--accent-dim); color: #fff; }
+
+  /* ---------- Top header ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    height: 48px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 16px;
+  }
+  .topbar .brand {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .topbar .brand .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good);
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px var(--good);
+    animation: pulse-dot 2.2s ease-in-out infinite;
+  }
+  .topbar .brand .dot.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(0.85); }
+  }
+
+  .env-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 999px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; letter-spacing: 0.06em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .env-badge:hover { background: #0e3645; }
+  .env-badge.prod {
+    background: var(--bad-bg);
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  .env-badge.prod:hover { background: #2a0e0e; }
+
+  .topbar .tenant {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .topbar .spacer { flex: 1; }
+
+  .topbar .refresh {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-2);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .topbar .refresh:hover { border-color: var(--accent); color: var(--accent); }
+  .topbar .refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+  .topbar .refresh .icon { font-family: "JetBrains Mono", monospace; }
+  .topbar .refresh.loading .icon { animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .topbar .refresh-status {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; color: var(--muted);
+  }
+  .topbar .refresh-status.error { color: var(--bad); }
+
+  /* ---------- Layout grid ---------- */
   .layout {
     display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 16px;
-    padding: 16px;
-    min-height: 100vh;
+    grid-template-columns: 300px minmax(0, 1fr) 320px;
+    gap: 12px;
+    padding: 12px;
+    align-items: start;
   }
+  @media (max-width: 1400px) {
+    .layout { grid-template-columns: 280px minmax(0, 1fr) 300px; }
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 260px minmax(0, 1fr); }
+    .col-right { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  }
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    .col-right { grid-column: 1; grid-template-columns: 1fr; }
+  }
+
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 14px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-1);
   }
-  .panel + .panel { margin-top: 12px; }
-  button {
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 10px;
-    cursor: pointer;
-    font-size: 13px;
+  .panel-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin: 0 0 10px 0;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.danger { color: var(--bad); border-color: #4a2a2a; }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .stack { display: flex; flex-direction: column; gap: 6px; }
-  .small { font-size: 12px; color: var(--muted); }
-  code, .mono { font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace; color: var(--code); }
+  .panel-title .meta { font-size: 10px; color: var(--idle); }
+  .small { font-size: 11px; color: var(--muted); }
+  .micro { font-size: 10px; color: var(--idle); font-family: "JetBrains Mono", monospace; }
+
+  /* ---------- Pills ---------- */
   .pill {
     display: inline-block; padding: 2px 8px; border-radius: 999px;
-    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
   }
-  .pill.initializing { background: #2a3340; color: #8a93a1; }
-  .pill.created      { background: #2a3340; color: #c5d3e0; }
-  .pill.attempted    { background: #3a3220; color: var(--warn); }
-  .pill.authorized   { background: #2c3a3a; color: #6cd3d3; }
-  .pill.paid         { background: #233c2a; color: var(--good); }
-  .pill.fulfilled    { background: #1f4a30; color: #6ce097; }
-  .pill.failed       { background: #4a2424; color: var(--bad); }
-  .pill.fulfillment_failed { background: #4a2424; color: var(--bad); }
-  .pill.refunded     { background: #2c2a3a; color: #c5b0ff; }
-  .badge {
-    display: inline-block; min-width: 16px; padding: 0 6px; border-radius: 999px;
-    font-size: 12px; background: var(--panel-2); color: var(--muted);
+  .pill.initializing      { background: #1a2030; color: var(--idle); }
+  .pill.created           { background: #1a2030; color: var(--text-2); }
+  .pill.attempted         { background: var(--warn-bg); color: var(--warn); }
+  .pill.authorized        { background: #0e2a30; color: #67e8f9; }
+  .pill.paid              { background: var(--good-bg); color: var(--good); }
+  .pill.fulfilled         { background: #07301a; color: #34d399; }
+  .pill.failed            { background: var(--bad-bg); color: var(--bad); }
+  .pill.fulfillment_failed{ background: var(--bad-bg); color: var(--bad); }
+  .pill.refunded          { background: #1a1830; color: #c4b5fd; }
+  .pill.done              { background: var(--good-bg); color: var(--good); }
+  .pill.pending           { background: #1a2030; color: var(--text-2); }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-2);
+    background: var(--panel-2); color: var(--text);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.12s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border-2); }
+  .btn.primary { background: var(--accent); color: #001218; border-color: var(--accent); font-weight: 500; }
+  .btn.primary:hover { background: #1ce5ff; }
+  .btn.primary:disabled { background: var(--accent-dim); }
+  .btn.danger {
+    color: var(--bad); border-color: #5a2424;
+    background: var(--panel-2);
+  }
+  .btn.danger:hover { border-color: var(--bad); background: var(--bad-bg); }
+  .btn.danger:disabled { cursor: not-allowed; }
+  .btn.danger:disabled:hover { background: var(--panel-2); border-color: #5a2424; }
+  .btn.confirm-danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+  .btn.confirm-danger:hover { background: #f87171; }
+  .btn.icon { padding: 4px 8px; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* ---------- Order cards (Recent / Search) ---------- */
+  .search-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border-2);
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .search-input::placeholder { color: var(--idle); }
+
+  .order-card {
+    display: block; width: 100%; text-align: left;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--idle);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    position: relative;
+  }
+  .order-card:hover { border-color: var(--accent); transform: translateX(2px); }
+  .order-card:hover .hover-affordance { opacity: 1; }
+  .order-card.selected {
+    border-color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-bg);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .order-card.status-created { border-left-color: var(--text-2); }
+  .order-card.status-attempted { border-left-color: var(--warn); }
+  .order-card.status-authorized { border-left-color: #67e8f9; }
+  .order-card.status-paid { border-left-color: var(--good); }
+  .order-card.status-fulfilled { border-left-color: var(--good); }
+  .order-card.status-failed { border-left-color: var(--bad); }
+  .order-card.status-fulfillment_failed { border-left-color: var(--bad); }
+  .order-card.status-refunded { border-left-color: #c4b5fd; }
+  .order-card .row1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .order-card .row1 .rzp-id {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .order-card .row1 .amount {
+    font-size: 11px; color: var(--text-2); font-family: "JetBrains Mono", monospace;
+  }
+  .order-card .row2 { display: flex; align-items: center; justify-content: space-between; }
+  .order-card .row2 .receipt {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .order-card .row2 .ts { font-size: 10px; color: var(--idle); }
+  .hover-affordance {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    color: var(--accent); font-size: 11px;
+    opacity: 0; transition: opacity 0.15s;
+    pointer-events: none;
+  }
+
+  .empty-state {
+    padding: 24px 8px;
     text-align: center;
+    color: var(--idle);
+    font-size: 12px;
+    font-style: italic;
   }
-  .badge.warn { background: #3a3220; color: var(--warn); }
-  .badge.good { background: #233c2a; color: var(--good); }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; }
-  td.mono { word-break: break-all; white-space: pre-wrap; }
-  td.metadata { word-break: break-all; white-space: pre-wrap; max-width: none; font-size: 11px; color: var(--code); }
-  hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
 
-  /* state machine row */
-  .sm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .sm .node {
-    padding: 4px 10px; border-radius: 6px;
+  /* Loading skeletons */
+  .skeleton {
+    height: 56px; border-radius: 6px; margin: 6px 0;
+    background: linear-gradient(90deg, var(--panel-2) 0%, var(--panel-3) 50%, var(--panel-2) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* ---------- Center: Order detail ---------- */
+  .detail-header {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-1);
+  }
+  .detail-header.empty { text-align: center; padding: 48px 24px; }
+  .detail-header.empty .icon {
+    font-size: 36px; color: var(--idle); margin-bottom: 8px;
+  }
+  .detail-header.empty .msg { color: var(--muted); }
+  .detail-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .detail-row .pill { padding: 4px 10px; font-size: 12px; }
+  .detail-row .label {
+    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .copyable {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--code);
+    font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .copyable:hover { border-color: var(--accent); color: var(--accent); }
+  .copyable.copied { color: var(--good); border-color: var(--good); }
+  .copyable .icon { font-size: 10px; }
+
+  .timestamps {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
+  }
+  .ts-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-2);
+  }
+  .ts-chip.set { color: var(--good); border-color: #14442a; background: var(--good-bg); }
+  .ts-chip .label { color: var(--muted); font-size: 10px; }
+  .ts-chip .check { color: var(--good); font-weight: 700; }
+  .ts-chip .dash { color: var(--idle); }
+
+  /* ---------- Failure spotlight ---------- */
+  .failure-banner {
+    background: var(--bad-bg);
+    border: 1px solid var(--bad);
+    border-left: 4px solid var(--bad);
+    color: var(--bad);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 0 24px rgba(239, 68, 68, 0.15);
+  }
+  .failure-banner .title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .failure-banner .evidence {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-2);
+    margin-top: 6px;
+  }
+
+  /* ---------- State machine (horizontal node graph) ---------- */
+  .state-graph {
+    display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap;
+    padding: 12px 8px 8px;
+  }
+  .state-graph .lane { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .state-node {
+    padding: 6px 10px; border-radius: 6px;
     background: var(--panel-2); border: 1px solid var(--border);
-    font-size: 12px; color: var(--muted);
+    color: var(--idle);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: all 0.2s ease;
+    min-height: 28px;
   }
-  .sm .node.active { color: #fff; border-color: var(--accent); background: #1e2a44; }
-  .sm .node.past   { color: var(--good); border-color: #1f4a30; background: #16291f; }
-  .sm .arrow { color: var(--muted); font-size: 12px; }
+  .state-node.past {
+    background: var(--good-bg);
+    border-color: var(--good);
+    color: var(--good);
+  }
+  .state-node.past::before { content: "✓"; font-weight: 700; }
+  .state-node.active {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+    animation: pulse-node 1.8s ease-in-out infinite;
+  }
+  .state-node.active::before { content: "●"; }
+  .state-node.failed-state {
+    background: var(--bad-bg); border-color: var(--bad); color: var(--bad);
+  }
+  .state-node.failed-state::before { content: "✕"; font-weight: 700; }
+  /* Branch nodes are dimmed by default — only the .failed-state modifier
+     (set when the order actually reached that terminal failure) makes
+     them red. Previously the branch nodes were always rendered red,
+     which mis-suggested failure on every successful transaction. */
+  .state-node.fail-branch {
+    color: var(--idle);
+    border-style: dashed;
+    border-color: var(--border);
+    background: var(--panel-2);
+  }
+  .state-node.fail-branch.failed-state {
+    color: var(--bad);
+    border-style: solid;
+    border-color: var(--bad);
+    background: var(--bad-bg);
+  }
+  @keyframes pulse-node {
+    0%, 100% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.4); }
+    50%      { box-shadow: 0 0 24px rgba(0, 212, 255, 0.7); }
+  }
+  .state-arrow { color: var(--idle); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+  /* Failure-branch arrows: dimmed by default, only red when paired with an
+     actually-reached failed-state node would be... we can't selector that
+     cleanly across siblings in pure CSS, so leave them dim always. Keeps
+     successful transactions visually clean. */
+  .state-arrow.fail { color: var(--idle); }
+  .state-graph .branch {
+    display: flex; align-items: center; gap: 4px;
+    margin-left: 16px; margin-top: 6px;
+  }
+  .state-graph .branch-label {
+    color: var(--idle); font-size: 10px; font-family: "JetBrains Mono", monospace;
+    margin-right: 4px;
+  }
 
-  .grid-stats {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  /* ---------- Payment Journey (timeline) ---------- */
+  .journey-summary {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    padding: 4px 0 10px;
   }
-  .stat {
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px;
     background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px;
+    font-size: 10px; font-family: "JetBrains Mono", monospace;
+    color: var(--text-2);
+    text-transform: uppercase; letter-spacing: 0.04em;
   }
-  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .stat .value { font-size: 18px; margin-top: 2px; }
-  .stat .sub { font-size: 11px; color: var(--muted); }
+  .chip.good { color: var(--good); border-color: #14442a; }
+  .chip.bad  { color: var(--bad);  border-color: #5a2424; }
+  .chip.active { color: var(--accent); border-color: var(--accent-dim); }
 
-  textarea { width: 100%; background: #0a0c10; color: var(--code); border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px; font-family: SFMono-Regular, Consolas, monospace; font-size: 12px;
-    resize: vertical; min-height: 100px; }
-  details summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; }
-  .blink { animation: blink 1s infinite; }
-  @keyframes blink { 50% { opacity: 0.5; } }
-
-  /* Payment Journey panel — vertical timeline */
-  .journey { display: flex; flex-direction: column; gap: 0; }
-  .lane {
-    margin: 6px 0 4px;
-    font-size: 11px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.06em;
-    padding-left: 4px;
+  .lane-header {
+    display: flex; align-items: center; gap: 8px;
+    margin: 14px 0 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-family: "JetBrains Mono", monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-2);
   }
-  .lane:first-child { margin-top: 0; }
+  .lane-header .icon { font-size: 14px; }
+  .lane-header:first-of-type { margin-top: 4px; }
+
   .step {
     display: grid;
-    grid-template-columns: 28px 1fr auto;
+    grid-template-columns: 32px 1fr auto;
     gap: 10px;
-    align-items: start;
-    padding: 8px 6px;
+    padding: 8px 6px 8px 6px;
     border-left: 2px solid var(--border);
-    margin-left: 13px;
+    margin-left: 14px;
     position: relative;
+    min-height: 48px;
   }
   .step .dot {
     width: 22px; height: 22px;
     border-radius: 50%;
     background: var(--panel-2);
-    border: 2px solid var(--border);
-    color: var(--muted);
+    border: 2px solid var(--border-2);
+    color: var(--idle);
     display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 600;
+    font-size: 11px; font-weight: 600;
+    font-family: "JetBrains Mono", monospace;
     margin-left: -25px;
     flex-shrink: 0;
     transition: all 0.2s;
   }
-  .step.pending .dot { background: var(--panel-2); color: var(--idle); border-color: var(--border); }
-  .step.active  .dot { background: #1e2a44; color: var(--accent); border-color: var(--accent); animation: pulse 1.4s infinite; }
-  .step.done    .dot { background: #16291f; color: var(--good); border-color: var(--good); }
-  .step.skipped .dot { background: var(--panel-2); color: var(--idle); border-color: var(--idle); }
-  .step.failed  .dot { background: #2a1414; color: var(--bad); border-color: var(--bad); }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(106,161,255,0.15); } }
-
+  .step.pending .dot {}
+  .step.done    .dot { background: var(--good-bg); color: var(--good); border-color: var(--good); }
+  .step.active  .dot {
+    background: var(--accent-bg); color: var(--accent); border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.12);
+    animation: pulse-dot-2 1.4s ease-in-out infinite;
+  }
+  .step.skipped .dot { color: var(--idle); }
+  .step.failed  .dot { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+  @keyframes pulse-dot-2 {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.12); }
+    50%      { box-shadow: 0 0 0 8px rgba(0, 212, 255, 0.20); }
+  }
   .step .body { min-width: 0; }
-  .step .title { font-weight: 600; font-size: 13px; }
-  .step .desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .step .title { font-weight: 500; font-size: 12px; color: var(--text); }
+  .step.active .title  { color: var(--accent); }
+  .step.failed .title  { color: var(--bad); }
   .step.skipped .title { color: var(--idle); text-decoration: line-through; }
   .step.skipped .desc  { color: var(--idle); }
-
+  .step .desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .step .evidence {
     margin-top: 4px;
-    font-family: SFMono-Regular, Consolas, monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 10px; color: var(--code);
     word-break: break-all;
   }
   .step .ts {
-    font-size: 10px; color: var(--muted);
-    font-family: SFMono-Regular, Consolas, monospace;
-    white-space: nowrap;
-    align-self: start; padding-top: 2px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--idle);
+    white-space: nowrap; padding-top: 2px;
   }
 
-  .journey-summary {
-    display: flex; gap: 10px; font-size: 12px; color: var(--muted);
-    padding: 8px 6px 4px;
-    flex-wrap: wrap;
+  /* ---------- Collapsible DB tables ---------- */
+  details {
+    margin: 6px 0;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
   }
-  .journey-summary .chip {
-    padding: 3px 8px; border-radius: 999px; background: var(--panel-2);
-    border: 1px solid var(--border); color: var(--text);
-  }
-
-  /* Scenarios panel */
-  .scenario-group { margin: 10px 0 6px; }
-  .scenario-group-label {
-    font-size: 11px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.06em;
-    margin: 0 0 4px 4px;
-  }
-  .scenario-btn {
-    width: 100%;
-    text-align: left;
-    padding: 8px 10px;
-    margin: 2px 0;
-    display: flex; flex-direction: column; gap: 2px;
-    line-height: 1.3;
-  }
-  .scenario-btn .s-title { font-size: 13px; font-weight: 500; }
-  .scenario-btn .s-expect { font-size: 11px; color: var(--muted); }
-  .scenario-btn.running { border-color: var(--accent); background: #1e2a44; }
-  .scenario-btn.passed  { border-color: var(--good); background: #16291f; }
-  .scenario-btn.failed  { border-color: var(--bad);  background: #2a1414; }
-  .scenario-result {
+  details > summary {
+    cursor: pointer; user-select: none;
+    padding: 8px 12px;
+    font-family: "JetBrains Mono", monospace;
     font-size: 11px;
-    margin-top: 4px;
-    color: var(--code);
-    font-family: SFMono-Regular, Consolas, monospace;
+    color: var(--text-2);
+    list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .scenario-result.pass { color: var(--good); }
-  .scenario-result.fail { color: var(--bad); }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: "▸"; margin-right: 8px; color: var(--muted); transition: transform 0.15s;
+  }
+  details[open] > summary::before { transform: rotate(90deg); display: inline-block; }
+  details .body { padding: 0 12px 12px; }
+
+  table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+    table-layout: auto;
+  }
+  table th, table td {
+    text-align: left; padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th {
+    color: var(--muted); font-weight: 500;
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  table td.mono { font-family: "JetBrains Mono", monospace; word-break: break-all; }
+  table td.metadata pre {
+    margin: 0; font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--code); white-space: pre-wrap; word-break: break-all;
+  }
+
+  .payment-card, .refund-card {
+    background: var(--panel-3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 6px 0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+  }
+  .payment-card .row, .refund-card .row { gap: 12px; margin-bottom: 4px; }
+  .payment-card .label { color: var(--muted); font-size: 10px; min-width: 80px; }
+
+  /* ---------- KPI strip + alarm banner ---------- */
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px; padding: 8px 12px 0;
+  }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px;
+  }
+  .kpi .label {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .kpi .value {
+    font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 500;
+    color: var(--text); margin-top: 2px;
+  }
+  .kpi.good .value { color: var(--good); }
+  .kpi.warn .value { color: var(--warn); }
+  .kpi.bad .value  { color: var(--bad); }
+  .kpi.bad { box-shadow: 0 0 0 1px var(--bad); }
+
+  .kpi.clickable {
+    cursor: pointer;
+    transition: all 0.12s;
+    position: relative;
+  }
+  .kpi.clickable:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .kpi.clickable.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(0, 212, 255, 0.15);
+    background: var(--accent-bg);
+  }
+  .kpi.clickable.active .label { color: var(--accent); }
+  .kpi-filter-x {
+    position: absolute; top: 4px; right: 6px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--accent); font-size: 14px;
+    line-height: 1; cursor: pointer;
+    display: none;
+  }
+  .kpi.clickable.active .kpi-filter-x { display: inline; }
+
+  .filter-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 8px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    font-size: 10px;
+    color: var(--accent);
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .filter-indicator .x {
+    cursor: pointer; padding: 0 4px;
+  }
+
+  .alarm-banner {
+    margin: 8px 12px 0; padding: 8px 14px;
+    background: var(--bad-bg); border: 1px solid var(--bad);
+    border-left: 4px solid var(--bad);
+    color: var(--bad); border-radius: 6px;
+    display: none;
+    box-shadow: 0 0 24px rgba(239,68,68,0.15);
+    font-size: 12px;
+  }
+  .alarm-banner.visible { display: block; }
+  .alarm-banner .title { font-weight: 600; margin-bottom: 4px; }
+
+  /* Clickable chip — used as journey navigation */
+  .chip.clickable { cursor: pointer; transition: all 0.12s; }
+  .chip.clickable:hover { transform: translateY(-1px); }
+  .chip.clickable.active-pulse {
+    animation: chip-pulse 0.8s ease-out 1;
+  }
+  @keyframes chip-pulse {
+    0% { box-shadow: 0 0 0 0 var(--accent); }
+    100% { box-shadow: 0 0 0 8px rgba(0, 212, 255, 0); }
+  }
+  .step.jump-target {
+    animation: jump-flash 1.2s ease-out 1;
+  }
+  @keyframes jump-flash {
+    0%, 30% { background: var(--accent-bg); }
+    100% { background: transparent; }
+  }
+
+  /* ---------- Scenarios ---------- */
+  .scenario-controls {
+    display: flex; gap: 8px; margin-bottom: 8px;
+  }
+  .scenario-controls .btn { flex: 1; justify-content: center; }
+  .scenario-progress {
+    height: 4px; background: var(--panel-2); border-radius: 2px;
+    overflow: hidden; margin: 4px 0 8px;
+  }
+  .scenario-progress .fill {
+    height: 100%; background: var(--accent);
+    width: 0%; transition: width 0.3s ease;
+  }
+  .scenario-progress-text {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--muted); margin-bottom: 8px; text-align: center;
+  }
+  .scenario-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--idle);
+    border-radius: 4px;
+    margin: 4px 0;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.12s;
+  }
+  .scenario-row:hover { border-color: var(--accent); }
+  .scenario-row.pass  { border-left-color: var(--good); }
+  .scenario-row.fail  { border-left-color: var(--bad); }
+  .scenario-row.run   { border-left-color: var(--accent); }
+  .scenario-row .status-icon {
+    width: 16px; text-align: center; font-family: "JetBrains Mono", monospace;
+  }
+  .scenario-row .status-icon.idle { color: var(--idle); }
+  .scenario-row .status-icon.run  { color: var(--accent); animation: spin 0.9s linear infinite; }
+  .scenario-row .status-icon.pass { color: var(--good); }
+  .scenario-row .status-icon.fail { color: var(--bad); }
+  .scenario-row .name { flex: 1; color: var(--text); }
+  .scenario-row .run-btn {
+    padding: 2px 8px; font-size: 10px;
+  }
+  .scenario-row .result {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--muted);
+  }
+  .scenario-row .result.pass { color: var(--good); }
+  .scenario-row .result.fail { color: var(--bad); }
+
+  /* Order group sections (collapsible by status) */
+  .order-group {
+    background: transparent;
+    border: none;
+    margin: 4px 0 0;
+    padding: 0;
+    border-radius: 0;
+  }
+  .order-group > summary {
+    cursor: pointer; user-select: none;
+    padding: 4px 4px 4px 0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--muted);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    list-style: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .order-group > summary::-webkit-details-marker { display: none; }
+  .order-group > summary::before {
+    content: "▸"; color: var(--muted); transition: transform 0.15s;
+  }
+  .order-group[open] > summary::before { transform: rotate(90deg); display: inline-block; }
+  .order-group .count {
+    margin-left: auto;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 10px;
+  }
+  .order-group.group-errors > summary { color: var(--bad); }
+  .order-group.group-errors .count { color: var(--bad); border-color: #5a2424; }
+  .order-group.group-inflight > summary { color: var(--warn); }
+  .order-group.group-completed > summary { color: var(--good); }
+  .order-group.group-refunded > summary { color: #c4b5fd; }
+
+  /* Step duration badge (#9) */
+  .step .duration {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .step .duration.slow { color: var(--warn); border-color: var(--warn); }
+  .step .duration.very-slow { color: var(--bad); border-color: var(--bad); }
+
+  /* Webhook row → step highlight (#7) */
+  #webhook-events tbody tr.clickable {
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  #webhook-events tbody tr.clickable:hover { background: var(--accent-bg); }
+  .step.flash {
+    animation: step-flash 1.2s ease-out 1;
+  }
+  @keyframes step-flash {
+    0%, 30% { background: var(--accent-bg); border-left-color: var(--accent); }
+    100% { background: transparent; }
+  }
+  .scenario-detail {
+    padding: 8px 12px; font-size: 11px;
+    background: var(--panel-3); border-radius: 4px;
+    margin: 2px 0 8px; color: var(--muted);
+  }
+  .scenario-detail .label {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--idle); margin-top: 4px;
+  }
+  .scenario-group {
+    margin-top: 8px;
+  }
+  .scenario-group > summary {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- Queue monitor ---------- */
+  .queue-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; margin: 4px 0;
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
+  }
+  .queue-row.warn { border-color: var(--warn); background: var(--warn-bg); }
+  .queue-row .name { color: var(--text-2); }
+  .queue-row .vals { display: flex; gap: 12px; color: var(--text); }
+  .queue-row .vals .label { color: var(--muted); margin-right: 4px; font-size: 10px; }
+  .queue-row .badge {
+    margin-left: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px;
+    background: var(--warn-bg); color: var(--warn);
+  }
+  .queue-row .check { color: var(--good); }
+
+  /* ---------- Activity log ---------- */
+  #log {
+    width: 100%; max-height: 200px; min-height: 100px;
+    background: var(--bg); color: var(--code);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; font-family: "JetBrains Mono", monospace; font-size: 11px;
+    resize: vertical;
+  }
+  .log-line { display: block; line-height: 1.5; }
+  .log-line .ts { color: var(--idle); margin-right: 6px; }
+  .log-line.pass { color: var(--good); }
+  .log-line.fail { color: var(--bad); }
+  .log-line.error { color: var(--bad); font-weight: 600; }
+
+  /* ---------- Snapshot ---------- */
+  #snapshot {
+    width: 100%; min-height: 80px;
+    background: var(--bg); color: var(--code);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; font-family: "JetBrains Mono", monospace; font-size: 10px;
+    resize: vertical; display: none;
+  }
+  #snapshot.visible { display: block; }
+
+  /* ---------- Modals ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(2px);
+    z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .modal-backdrop.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border-2);
+    border-radius: 8px;
+    box-shadow: var(--shadow-2);
+    width: 100%; max-width: 480px;
+    overflow: hidden;
+    transform: translateY(20px); transition: transform 0.15s;
+  }
+  .modal-backdrop.open .modal { transform: translateY(0); }
+  .modal-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text);
+  }
+  .modal-header.danger { color: var(--bad); }
+  .modal-body { padding: 16px; font-size: 13px; color: var(--text-2); }
+  .modal-body p { margin: 0 0 10px; }
+  .modal-body code { color: var(--accent); padding: 1px 4px; background: var(--bg); border-radius: 3px; }
+  .modal-body .warning-list {
+    margin: 8px 0;
+    padding-left: 16px;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .modal-body .warning-list li { margin: 4px 0; }
+  .modal-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+
+  /* ---------- Toasts ---------- */
+  .toast-container {
+    position: fixed;
+    bottom: 16px; right: 16px;
+    z-index: 200;
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--panel);
+    border: 1px solid var(--border-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 14px;
+    box-shadow: var(--shadow-2);
+    min-width: 240px;
+    max-width: 360px;
+    font-size: 12px;
+    pointer-events: auto;
+    animation: slide-in 0.18s ease-out;
+  }
+  .toast.success { border-left-color: var(--good); }
+  .toast.warn    { border-left-color: var(--warn); }
+  .toast.error   { border-left-color: var(--bad); }
+  .toast .title {
+    font-weight: 500; margin-bottom: 2px; color: var(--text);
+  }
+  .toast .msg { color: var(--muted); font-size: 11px; }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ---------- Misc ---------- */
+  kbd {
+    background: var(--panel-2); border: 1px solid var(--border-2);
+    border-radius: 3px; padding: 1px 5px;
+    font-size: 10px; color: var(--text-2);
+  }
 </style>
 </head>
 <body>
+
+<!-- ============ Top header ============ -->
+<div class="topbar">
+  <div class="brand"><span id="health-dot" class="dot" aria-label="health"></span>Payment Flow Dashboard</div>
+  <button id="env-badge" class="env-badge" aria-label="environment switcher">
+    <span id="env-label">LOCAL · localhost:8000</span>
+  </button>
+  <div class="tenant">tenant: <span id="tenant-id">…</span></div>
+  <div class="spacer"></div>
+  <button id="btn-refresh" class="refresh" aria-label="refresh">
+    <span class="icon">⟳</span> Refresh
+  </button>
+  <div class="refresh-status" id="refresh-status">never refreshed</div>
+</div>
+
+<!-- Alarm banner (only visible when DLQ depth > 0 or stuck-paid > 0) -->
+<div id="alarm-banner" class="alarm-banner">
+  <div class="title">⚠ ALARM</div>
+  <div id="alarm-body"></div>
+</div>
+
+<!-- Today's KPIs strip -->
+<div class="kpi-strip" id="kpi-strip">
+  <div class="kpi"><div class="label">paid today</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">fulfilled today</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">failed today</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">in-flight</div><div class="value">—</div></div>
+  <div class="kpi"><div class="label">stuck paid (&gt;15m)</div><div class="value">—</div></div>
+</div>
+
+<!-- ============ Three-column layout ============ -->
 <div class="layout">
 
-  <!-- LEFT: controls -->
-  <div>
+  <!-- =========== LEFT SIDEBAR =========== -->
+  <div class="col-left">
     <div class="panel">
-      <h1>Razorpay Flow Dashboard</h1>
-      <div class="small">Dev backend at <code>localhost:8000</code> / tenant
-        <code id="tenant-id">…</code></div>
-      <hr/>
-      <div class="stack">
-        <button id="btn-create" class="primary">1. Create order</button>
-        <button id="btn-authorized">2a. Fire payment.authorized</button>
-        <button id="btn-captured">2b. Fire payment.captured</button>
-        <button id="btn-failed">2c. Fire payment.failed</button>
-        <button id="btn-refund">3. Fire refund.processed</button>
-        <button id="btn-orderpaid">misc: order.paid</button>
-        <hr/>
-        <button id="btn-reset" class="danger">Reset (purge DB + queues)</button>
+      <div class="panel-title">Tenant Filter</div>
+      <input id="tenant-filter" class="search-input" type="text"
+             placeholder="leave empty for all tenants" autocomplete="off" />
+      <div class="small" style="margin-top: 6px;">Applies to KPIs + Recent.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Recent Transactions <span class="meta" id="recent-meta"></span></div>
+      <div id="recent-orders">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>Test Scenarios</h2>
-      <div class="small" style="margin-bottom: 6px;">
-        Each scenario auto-creates an order, fires the required webhooks,
-        polls for the expected outcome, and reports pass/fail. Run any
-        button; it auto-selects the resulting order in the right panel.
+      <div class="panel-title">Search <span class="meta">Ctrl/Cmd+K</span></div>
+      <input id="order-search" class="search-input" type="text"
+             placeholder="razorpay_order_id, receipt, or order_id…"
+             autocomplete="off" />
+      <div id="search-results" style="margin-top: 8px;">
+        <div class="empty-state">type to search</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Maintenance</div>
+      <button id="btn-reset" class="btn danger" style="width: 100%; justify-content: center;">
+        <span>⚠</span> Reset DB + Queues
+      </button>
+      <div class="small" style="margin-top: 8px;" id="reset-hint">
+        Disabled outside localhost. Wipes orders, payments, refunds, webhook_events, order_events; purges all SQS queues.
+      </div>
+    </div>
+  </div>
+
+  <!-- =========== CENTER MAIN =========== -->
+  <div class="col-center">
+    <div id="detail-header" class="detail-header empty">
+      <div class="icon">◇</div>
+      <div class="msg">Select a transaction on the left to trace its journey through the payment pipeline.</div>
+    </div>
+
+    <div id="failure-banner-host"></div>
+
+    <div class="panel">
+      <div class="panel-title">State Machine</div>
+      <div id="state-graph" class="state-graph"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        Payment Journey <span class="meta" id="journey-step-count"></span>
+      </div>
+      <div class="journey-summary" id="journey-summary"></div>
+      <div id="journey"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Database Evidence</div>
+      <details id="details-order-events">
+        <summary>order_events <span id="oe-count" class="meta"></span></summary>
+        <div class="body">
+          <table id="order-events">
+            <thead><tr>
+              <th>at</th><th>from → to</th><th>trigger</th><th>metadata</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+      <details id="details-webhook-events">
+        <summary>webhook_events <span id="we-count" class="meta"></span></summary>
+        <div class="body">
+          <table id="webhook-events">
+            <thead><tr>
+              <th>received_at</th><th>event</th><th>status</th>
+              <th>event_id</th><th>correlation_id</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+      <details id="details-payments">
+        <summary>payments / refunds <span id="p-count" class="meta"></span></summary>
+        <div class="body" id="payments-block"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- =========== RIGHT SIDEBAR =========== -->
+  <div class="col-right">
+    <div class="panel">
+      <div class="panel-title">Test Scenarios <span class="meta" id="scenarios-meta"></span></div>
+      <div class="scenario-controls">
+        <button id="btn-run-all" class="btn primary" aria-label="run all scenarios"
+                title="These scenarios work identically against the AWS backend. Switch the environment in the header to run there.">
+          ▶ Run All
+        </button>
+        <button id="btn-stop-all" class="btn" disabled aria-label="stop scenario run">✕ Stop</button>
+      </div>
+      <div id="scenario-progress-wrapper" style="display:none">
+        <div class="scenario-progress"><div id="scenario-progress-fill" class="fill"></div></div>
+        <div class="scenario-progress-text" id="scenario-progress-text"></div>
       </div>
       <div id="scenarios"></div>
     </div>
 
     <div class="panel">
-      <h2>Recent orders</h2>
-      <div id="recent-orders" class="small">loading…</div>
-    </div>
-
-    <div class="panel">
-      <h2>SQS queue depths</h2>
-      <div id="queues" class="small">loading…</div>
-    </div>
-  </div>
-
-  <!-- RIGHT: live state -->
-  <div>
-    <div class="panel">
-      <h2>Order</h2>
-      <div id="order-card">No order selected. Click <strong>Create order</strong>.</div>
-    </div>
-
-    <div class="panel">
-      <h2>Payment Journey</h2>
-      <div class="journey-summary" id="journey-summary"></div>
-      <div class="journey" id="journey"></div>
-    </div>
-
-    <div class="panel">
-      <h2>State machine</h2>
-      <div id="state-machine" class="sm">
-        <span class="node" data-s="initializing">initializing</span>
-        <span class="arrow">→</span>
-        <span class="node" data-s="created">created</span>
-        <span class="arrow">→</span>
-        <span class="node" data-s="attempted">attempted</span>
-        <span class="arrow">→</span>
-        <span class="node" data-s="authorized">authorized</span>
-        <span class="arrow">→</span>
-        <span class="node" data-s="paid">paid</span>
-        <span class="arrow">→</span>
-        <span class="node" data-s="fulfilled">fulfilled</span>
-        <span class="arrow">|</span>
-        <span class="node" data-s="failed">failed</span>
-        <span class="node" data-s="fulfillment_failed">fulfillment_failed</span>
-        <span class="node" data-s="refunded">refunded</span>
+      <div class="panel-title">Queue Monitor <span class="meta" id="queue-meta">click Refresh</span></div>
+      <div id="queues">
+        <div class="empty-state">click Refresh to load</div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>order_events (DB)</h2>
-      <table id="order-events"><thead>
-        <tr><th>at</th><th>from</th><th>to</th><th>trigger</th><th>metadata</th></tr>
-      </thead><tbody></tbody></table>
+      <div class="panel-title">Activity Log</div>
+      <textarea id="log" readonly></textarea>
     </div>
 
     <div class="panel">
-      <h2>webhook_events (DB)</h2>
-      <table id="webhook-events"><thead>
-        <tr><th>received_at</th><th>event</th><th>status</th><th>event_id</th></tr>
-      </thead><tbody></tbody></table>
-    </div>
-
-    <div class="panel">
-      <h2>payments / refunds</h2>
-      <div id="payments-block"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Activity log</h2>
-      <textarea id="log" readonly style="min-height: 140px;"></textarea>
-    </div>
-
-    <div class="panel">
-      <h2>Snapshot</h2>
-      <div class="small">Click <strong>Copy snapshot</strong> to put a full
-        text dump of the order + events + payments + queues on your clipboard.
-        Paste it into chat as one block.</div>
-      <div style="margin: 8px 0;">
-        <button id="btn-snapshot" class="primary">Copy snapshot</button>
-        <span id="snapshot-feedback" class="small" style="margin-left: 8px;"></span>
+      <div class="panel-title">Snapshot</div>
+      <div class="row">
+        <button id="btn-snapshot" class="btn">📋 Copy Snapshot</button>
+        <span id="snapshot-feedback" class="small"></span>
       </div>
-      <textarea id="snapshot" readonly style="min-height: 200px; font-size: 11px;"></textarea>
+      <textarea id="snapshot" readonly></textarea>
     </div>
   </div>
+</div>
 
+<!-- ============ Toast container ============ -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ============ Modal: Environment switcher ============ -->
+<div id="env-modal" class="modal-backdrop" role="dialog" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">Switch Environment</div>
+    <div class="modal-body">
+      <p>All <code>/payments/*</code> and <code>/dev/*</code> requests will use this base URL.</p>
+      <p class="small">Leave empty for relative URLs (same-origin / localhost).</p>
+      <input id="env-input" class="search-input" type="text" placeholder="https://your-app.example.com" />
+      <p class="small" style="margin-top: 10px;">
+        Examples: <code>http://localhost:8000</code>, <code>https://api.example.com</code>.
+        Persists in localStorage.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-modal-cancel="env-modal">Cancel</button>
+      <button id="env-save" class="btn primary">Save & Refresh</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: Reset confirmation (type-to-confirm) ============ -->
+<div id="reset-modal" class="modal-backdrop" role="dialog" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header danger">⚠ Destructive: Reset DB + Queues</div>
+    <div class="modal-body">
+      <p><strong>This will permanently delete:</strong></p>
+      <ul class="warning-list">
+        <li>All rows in <code>orders</code>, <code>payments</code>, <code>refunds</code>,
+            <code>webhook_events</code>, <code>order_events</code></li>
+        <li>All messages in <code>webhook-events.fifo</code> and its DLQ</li>
+        <li>All messages in <code>fulfillment-queue.fifo</code> and its DLQ</li>
+      </ul>
+      <p class="small">Tenant rows are preserved. This action cannot be undone.</p>
+      <p class="small" id="reset-env-line"></p>
+      <p style="margin-top: 12px;">Type <code>RESET</code> below to enable the confirm button:</p>
+      <input id="reset-confirm-input" class="search-input" type="text" autocomplete="off"
+             placeholder="type RESET to confirm" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-modal-cancel="reset-modal">Cancel</button>
+      <button id="reset-confirm" class="btn confirm-danger" disabled>Confirm Reset</button>
+    </div>
+  </div>
 </div>
 
 <script>
+// ============================================================
+// State + helpers
+// ============================================================
 const $ = (id) => document.getElementById(id);
-const logEl = $("log");
-function log(msg) {
-  const ts = new Date().toISOString().split("T")[1].split(".")[0];
-  logEl.value = `[${ts}] ${msg}\n` + logEl.value;
+
+const DEFAULT_LOCAL_URL = "http://localhost:8000";
+const LS_BASE_URL = "razorpay_dashboard_base_url";
+
+let baseURL = localStorage.getItem(LS_BASE_URL) ?? "";   // "" = same-origin
+let currentOrderId = null;
+let currentRzpOrderId = null;
+let currentPaymentId = null;
+let orderSearchFilter = "";
+let allOrdersCache = [];
+let lastFlow = null;
+let tenantFilter = "";
+let lastDashboardData = null;
+// Active KPI filter — one of: null, 'paid_today', 'fulfilled_today',
+// 'failed_today', 'in_flight', 'stuck_paid'. Each maps to backend params
+// in buildFilterQuery().
+let activeKpiFilter = null;
+let healthy = true;
+let scenarioRunAbort = false;
+const SCENARIO_RESULTS = {};   // id -> {ok, msg}
+let searchDebounceTimer = null;
+
+function effectiveBaseURL() {
+  return baseURL || "";   // empty -> relative
 }
+
+function isProductionEnv() {
+  // Anything other than localhost/127.0.0.1 is considered "prod-like" for
+  // destructive-action gating. Empty baseURL is same-origin; trust it as
+  // local only if the document is loaded from a localhost origin.
+  const url = effectiveBaseURL();
+  if (!url) {
+    return !/^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/.test(window.location.host);
+  }
+  try {
+    const u = new URL(url);
+    return !/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/.test(u.hostname);
+  } catch (e) { return true; }   // unparseable URL -> assume prod (safer)
+}
+
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  const url = effectiveBaseURL() + path;
+  const r = await fetch(url, opts);
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("application/json") ? await r.json() : await r.text();
   if (!r.ok) throw Object.assign(new Error(`${path} ${r.status}`), { status: r.status, body });
   return body;
 }
 
-let currentOrderId = null;
-let currentRzpOrderId = null;
-let currentPaymentId = null;
-
-// ------- buttons -------
-
-$("btn-create").addEventListener("click", async () => {
-  try {
-    const receipt = "dash-" + Math.random().toString(36).slice(2, 8);
-    const r = await api("/payments/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ receipt }),
-    });
-    currentOrderId = r.order_id;
-    currentRzpOrderId = r.razorpay_order_id;
-    currentPaymentId = "pay_" + Math.random().toString(36).slice(2, 16);
-    log(`order created order_id=${r.order_id} razorpay=${r.razorpay_order_id} payment_id=${currentPaymentId}`);
-    refresh();
-  } catch (e) { log("ERR create: " + e.message); }
-});
-
-async function fireEvent(eventType, opts={}) {
-  if (!currentRzpOrderId) { log("no order. click Create order first."); return; }
-  const body = {
-    event_type: eventType,
-    razorpay_order_id: currentRzpOrderId,
-    razorpay_payment_id: currentPaymentId,
-    amount: opts.amount ?? 50000,
-  };
-  try {
-    const r = await api("/dev/simulate", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    log(`fired ${eventType} status=${r.status_code} event_id=${r.event_id}`);
-  } catch (e) { log("ERR fire " + eventType + ": " + e.message); }
+// ============================================================
+// Toasts + log
+// ============================================================
+function toast(title, msg, kind="info", ttl=4000) {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.innerHTML = `<div class="title">${escapeHtml(title)}</div>${msg ? `<div class="msg">${escapeHtml(msg)}</div>` : ""}`;
+  $("toasts").appendChild(el);
+  if (ttl > 0) setTimeout(() => el.remove(), ttl);
+  el.addEventListener("click", () => el.remove());
 }
 
-$("btn-authorized").addEventListener("click", () => fireEvent("payment.authorized"));
-$("btn-captured").addEventListener("click", () => fireEvent("payment.captured"));
-$("btn-failed").addEventListener("click", () => fireEvent("payment.failed"));
-$("btn-refund").addEventListener("click", () => fireEvent("refund.processed"));
-$("btn-orderpaid").addEventListener("click", () => fireEvent("order.paid"));
-
-$("btn-reset").addEventListener("click", async () => {
-  if (!confirm("Wipe orders/payments/refunds/webhook_events/order_events and purge SQS?")) return;
-  try {
-    const r = await api("/dev/reset", { method: "POST" });
-    currentOrderId = null;
-    currentRzpOrderId = null;
-    currentPaymentId = null;
-    log("reset. queues_purged=" + JSON.stringify(r.queues_purged));
-    refresh();
-  } catch (e) { log("ERR reset: " + e.message); }
-});
-
-// ------- pollers -------
-
-async function refresh() {
-  await Promise.all([refreshRecent(), refreshQueues(), refreshFlow()]);
+const logEl = $("log");
+function log(msg, kind="info") {
+  const ts = new Date().toISOString().split("T")[1].split(".")[0];
+  const prefix = kind === "pass" ? "PASS " : kind === "fail" ? "FAIL " : kind === "error" ? "ERR  " : "";
+  logEl.value = `[${ts}] ${prefix}${msg}\n` + logEl.value;
 }
 
-async function refreshRecent() {
-  try {
-    const r = await api("/dev/flow");
-    const div = $("recent-orders");
-    if (!r.orders.length) { div.innerHTML = "<em class='small'>none</em>"; return; }
-    div.innerHTML = r.orders.map(o => `
-      <div style="margin: 4px 0;">
-        <span class="pill ${o.status}">${o.status}</span>
-        <a href="#" data-id="${o.id}" class="orderlink mono">${o.razorpay_order_id || o.id.slice(0,8)}</a>
-        <span class="small">${o.receipt || ""}</span>
-      </div>
-    `).join("");
-    div.querySelectorAll(".orderlink").forEach(a => a.addEventListener("click", (e) => {
-      e.preventDefault();
-      currentOrderId = a.getAttribute("data-id");
-      // best-effort: surface rzp_order_id from this list row
-      const o = r.orders.find(x => x.id === currentOrderId);
-      currentRzpOrderId = o ? o.razorpay_order_id : null;
-      log("selected order " + currentOrderId);
-      refreshFlow();
-    }));
-  } catch (e) { /* swallow */ }
+function escapeHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-async function refreshQueues() {
-  try {
-    const r = await api("/dev/queues");
-    const html = `<div class="grid-stats">${
-      Object.entries(r.queues).map(([name, q]) => {
-        const v = q.visible ?? 0;
-        const i = q.inflight ?? 0;
-        const cls = (v + i) > 0 ? "warn" : "";
-        const isDlq = name.includes("dlq");
-        const labelCls = isDlq ? "bad" : "";
-        return `
-          <div class="stat">
-            <div class="label" style="${isDlq ? 'color: var(--bad)' : ''}">${name}</div>
-            <div class="value">${v}<span class="sub"> visible</span></div>
-            <div class="sub">${i} inflight</div>
-          </div>`;
-      }).join("")
-    }</div>`;
-    $("queues").innerHTML = html;
-  } catch (e) { /* swallow */ }
+function copyToClipboard(text, feedbackEl) {
+  navigator.clipboard.writeText(text).then(() => {
+    if (feedbackEl) {
+      feedbackEl.classList.add("copied");
+      const orig = feedbackEl.innerHTML;
+      feedbackEl.innerHTML = "✓ copied";
+      setTimeout(() => {
+        feedbackEl.classList.remove("copied");
+        feedbackEl.innerHTML = orig;
+      }, 1500);
+    } else {
+      toast("Copied", null, "success", 1500);
+    }
+  }).catch(() => {
+    toast("Clipboard blocked", "select and copy manually", "warn");
+  });
 }
 
-async function refreshFlow() {
-  if (!currentOrderId) {
-    $("order-card").innerHTML = "No order selected. Click <strong>Create order</strong>.";
-    setStateMachine(null);
-    fillTable("order-events", []);
-    fillTable("webhook-events", []);
-    $("payments-block").innerHTML = "";
-    renderJourney(null);
-    return;
-  }
-  try {
-    const r = await api("/dev/flow/" + currentOrderId);
-    const o = r.order;
-    currentRzpOrderId = o.razorpay_order_id || currentRzpOrderId;
-    $("order-card").innerHTML = `
-      <div><span class="pill ${o.status}">${o.status}</span>
-        <span class="mono">${o.razorpay_order_id || o.id}</span></div>
-      <div class="small" style="margin-top: 6px;">
-        amount: ₹${(o.amount/100).toFixed(2)} · receipt: ${o.receipt} · correlation: ${o.correlation_id || "—"}
-      </div>
-      <div class="small">
-        created: ${o.created_at || "—"} ·
-        attempted: ${o.attempted_at || "—"} ·
-        authorized: ${o.authorized_at || "—"} ·
-        paid: ${o.paid_at || "—"} ·
-        fulfilled: ${o.fulfilled_at || "—"} ·
-        failed: ${o.failed_at || "—"} ·
-        refunded: ${o.refunded_at || "—"}
-      </div>
-    `;
-    setStateMachine(o.status);
-    fillTable("order-events", r.order_events.map(e => [
-      e.created_at, e.from_status || "—", e.to_status, e.trigger,
-      JSON.stringify(e.metadata || {}, null, 2),
-    ]));
-    fillTable("webhook-events", r.webhook_events.map(e => [
-      e.received_at, e.event,
-      `<span class="pill ${e.processing_status === 'done' ? 'paid' : e.processing_status === 'failed' ? 'failed' : 'created'}">${e.processing_status}</span>`,
-      e.event_id,
-    ]));
-    $("payments-block").innerHTML = `
-      <div class="small">payments: ${r.payments.length}, refunds: ${r.refunds.length}</div>
-      ${r.payments.map(p => `<div class="mono small">${p.razorpay_payment_id} · ${p.status} · ₹${(p.amount/100).toFixed(2)} · authoritative=${p.is_authoritative}</div>`).join("")}
-      ${r.refunds.map(p => `<div class="mono small">refund ${p.razorpay_refund_id} · ${p.status} · ₹${(p.amount/100).toFixed(2)}</div>`).join("")}
-    `;
-    renderJourney(r);
-  } catch (e) { /* swallow */ }
+function relativeTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const sec = Math.max(1, Math.floor((now - then) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 60) return sec + "s ago";
+  if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+  if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+  return Math.floor(sec / 86400) + "d ago";
 }
-
-// ------- Payment Journey -------
-//
-// Synthesizes a 17-step end-to-end timeline from the flow data we already
-// poll. Each step has a status derived from order/order_events/webhook_events:
-//   pending  — not yet observed
-//   active   — the next-up step (one step ahead of last observed evidence)
-//   done     — proven by DB evidence (timestamp / row)
-//   skipped  — design-time bypass (e.g. authorized hop when UPI captured direct)
-//   failed   — order in failed/fulfillment_failed/refunded
-//
-// Evidence shown inline: timestamps, event_ids, payment_ids, queue depths.
 
 function shortTs(iso) {
   if (!iso) return "";
   const t = String(iso).split("T")[1] || "";
-  return t.slice(0, 12);
+  return t.slice(0, 8);
 }
 
-function findEvent(events, to_status, opts) {
-  opts = opts || {};
-  return events.find(e =>
-    e.to_status === to_status &&
-    (opts.trigger ? e.trigger === opts.trigger : true) &&
-    (opts.auto_attempted ? (e.metadata && e.metadata.auto_attempted) : true)
-  );
+function copyableHtml(value, label) {
+  if (!value) return `<span class="micro">${label}: —</span>`;
+  return `<span class="copyable" data-copy="${escapeHtml(value)}" title="click to copy">
+    <span class="micro" style="color: var(--muted);">${label}</span>
+    <span>${escapeHtml(value)}</span>
+  </span>`;
 }
 
+// Wire any newly-rendered copyables.
+function bindCopyables(root=document) {
+  root.querySelectorAll(".copyable").forEach(el => {
+    if (el.dataset.boundCopy) return;
+    el.dataset.boundCopy = "1";
+    el.addEventListener("click", () => {
+      const v = el.getAttribute("data-copy");
+      if (!v) return;
+      copyToClipboard(v, el);
+    });
+  });
+}
+
+// ============================================================
+// Environment switcher
+// ============================================================
+function updateEnvBadge() {
+  const url = effectiveBaseURL() || "(same-origin)";
+  const label = isProductionEnv() ? "PROD" : "LOCAL";
+  const display = url.replace(/^https?:\/\//, "");
+  $("env-label").textContent = `${label} · ${display}`;
+  $("env-badge").classList.toggle("prod", isProductionEnv());
+  // Update reset button availability.
+  const prod = isProductionEnv();
+  $("btn-reset").disabled = prod;
+  $("reset-hint").textContent = prod
+    ? "DISABLED. Reset works only when the dashboard targets a localhost backend. Use the /dev/reset endpoint directly with admin auth if you really need this in a non-local env."
+    : "Wipes orders, payments, refunds, webhook_events, order_events; purges all SQS queues. Tenant rows preserved.";
+}
+
+$("env-badge").addEventListener("click", () => {
+  $("env-input").value = baseURL;
+  $("env-modal").classList.add("open");
+  setTimeout(() => $("env-input").focus(), 50);
+});
+$("env-save").addEventListener("click", () => {
+  const next = $("env-input").value.trim().replace(/\/$/, "");
+  baseURL = next;
+  localStorage.setItem(LS_BASE_URL, next);
+  $("env-modal").classList.remove("open");
+  updateEnvBadge();
+  toast("Environment switched", next || "(same-origin)", "success");
+  manualRefresh();
+});
+
+// Modal close handlers
+document.querySelectorAll("[data-modal-cancel]").forEach(b => {
+  b.addEventListener("click", () => {
+    $(b.getAttribute("data-modal-cancel")).classList.remove("open");
+  });
+});
+document.querySelectorAll(".modal-backdrop").forEach(bg => {
+  bg.addEventListener("click", (e) => {
+    if (e.target === bg) bg.classList.remove("open");
+  });
+});
+
+// ============================================================
+// Recent transactions + Search
+// ============================================================
+function renderOrderCard(o) {
+  const selected = o.id === currentOrderId ? "selected" : "";
+  const amount = o.amount != null ? "₹ " + (o.amount / 100).toFixed(2) : "";
+  const ago = relativeTime(o.created_at);
+  return `
+    <button class="order-card ${selected} status-${o.status}"
+            data-id="${escapeHtml(o.id)}"
+            data-rzp="${escapeHtml(o.razorpay_order_id || "")}"
+            title="${escapeHtml(o.razorpay_order_id || o.id)}">
+      <div class="row1">
+        <span class="pill ${o.status}">${o.status}</span>
+        <span class="rzp-id">${escapeHtml(o.razorpay_order_id || o.id.slice(0, 12))}</span>
+        <span class="amount">${amount}</span>
+      </div>
+      <div class="row2">
+        <span class="receipt">${escapeHtml(o.receipt || "")}</span>
+        <span class="ts" title="${escapeHtml(o.created_at || "")}">${ago}</span>
+      </div>
+      <span class="hover-affordance">→</span>
+    </button>
+  `;
+}
+function bindOrderCardClicks(container) {
+  container.querySelectorAll(".order-card").forEach(card => {
+    card.addEventListener("click", () => {
+      currentOrderId = card.getAttribute("data-id");
+      currentRzpOrderId = card.getAttribute("data-rzp") || null;
+      // OPTIMIZATION: selecting an order does NOT change KPIs, queues, or
+      // the recent list. Hit the per-order endpoint instead of refetching
+      // everything. Saves 4 SQS calls + 2 SQL queries per click.
+      renderRecentOrders();
+      renderSearchResults();
+      fetchSelectedOnly();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+}
+
+async function fetchSelectedOnly() {
+  if (!currentOrderId) {
+    lastFlow = null;
+    renderDetailHeader(null); renderStateGraph(null);
+    renderJourney(null); renderDbTables(null);
+    return;
+  }
+  // Per-order cache: terminal orders never change, so we can keep them
+  // forever; in-flight orders re-fetch every click. The cache lives in
+  // sessionStorage so reopening the tab forgets state.
+  const cacheKey = "rzp_order_cache::" + currentOrderId;
+  const TERMINAL = ["fulfilled", "failed", "fulfillment_failed", "refunded"];
+  let cached = null;
+  try { cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null"); }
+  catch (e) { cached = null; }
+  if (cached && TERMINAL.includes(cached.order?.status)) {
+    lastFlow = cached;
+    currentRzpOrderId = cached.order.razorpay_order_id || currentRzpOrderId;
+    renderDetailHeader(cached);
+    renderStateGraph(cached.order.status);
+    renderJourney(cached);
+    renderDbTables(cached);
+    return;
+  }
+  try {
+    const data = await api("/dev/flow/" + currentOrderId);
+    lastFlow = data;
+    currentRzpOrderId = data.order.razorpay_order_id || currentRzpOrderId;
+    renderDetailHeader(data);
+    renderStateGraph(data.order.status);
+    renderJourney(data);
+    renderDbTables(data);
+    // Cache terminal orders for the lifetime of the tab.
+    if (TERMINAL.includes(data.order.status)) {
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+    }
+  } catch (e) {
+    log("selected fetch error: " + e.message, "error");
+  }
+}
+function renderRecentOrders() {
+  const div = $("recent-orders");
+  // When a KPI filter is active, allOrdersCache is already filtered server-side.
+  const visible = activeKpiFilter ? allOrdersCache : allOrdersCache.slice(0, 20);
+  $("recent-meta").textContent = visible.length ? `${visible.length}` : "";
+
+  // Filter indicator pill at the top of the list when active.
+  let filterBar = "";
+  if (activeKpiFilter) {
+    filterBar = `<div style="margin-bottom: 8px;">
+      <span class="filter-indicator">
+        FILTER: ${escapeHtml(activeFilterLabel())} · ${visible.length}
+        <span class="x" data-clear-filter="1" title="clear filter">×</span>
+      </span>
+    </div>`;
+  }
+
+  if (!visible.length) {
+    div.innerHTML = filterBar + `<div class="empty-state">${
+      activeKpiFilter
+        ? "no orders match this filter"
+        : "No transactions yet. Run a test scenario to create one."
+    }</div>`;
+    bindFilterClear(div);
+    return;
+  }
+
+  // When a filter is active, render flat (the server already narrowed the set).
+  if (activeKpiFilter) {
+    div.innerHTML = filterBar + visible.map(renderOrderCard).join("");
+    bindOrderCardClicks(div);
+    bindFilterClear(div);
+    return;
+  }
+
+  // Otherwise group by status: errors expanded, completed/refunded collapsed.
+  const groups = {
+    errors:    { label: "⚠ Errors",       cls: "group-errors",    open: true,  orders: [] },
+    inflight:  { label: "◐ In-flight",    cls: "group-inflight",  open: true,  orders: [] },
+    completed: { label: "✓ Completed",    cls: "group-completed", open: false, orders: [] },
+    refunded:  { label: "↩ Refunded",     cls: "group-refunded",  open: false, orders: [] },
+  };
+  visible.forEach(o => {
+    if (["failed", "fulfillment_failed"].includes(o.status)) groups.errors.orders.push(o);
+    else if (o.status === "fulfilled") groups.completed.orders.push(o);
+    else if (o.status === "refunded")  groups.refunded.orders.push(o);
+    else groups.inflight.orders.push(o);
+  });
+  const html = Object.entries(groups)
+    .filter(([_, g]) => g.orders.length > 0)
+    .map(([_, g]) => `
+      <details class="order-group ${g.cls}" ${g.open ? "open" : ""}>
+        <summary>${g.label} <span class="count">${g.orders.length}</span></summary>
+        <div>${g.orders.map(renderOrderCard).join("")}</div>
+      </details>
+    `).join("");
+  div.innerHTML = html;
+  bindOrderCardClicks(div);
+  bindFilterClear(div);
+}
+
+function bindFilterClear(root) {
+  root.querySelectorAll("[data-clear-filter='1']").forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      activeKpiFilter = null;
+      manualRefresh();
+    });
+  });
+}
+function renderSearchResults() {
+  const div = $("search-results");
+  const q = orderSearchFilter.trim().toLowerCase();
+  if (!q) {
+    div.innerHTML = `<div class="empty-state">type to search</div>`;
+    return;
+  }
+  const matched = allOrdersCache.filter(o =>
+    (o.razorpay_order_id || "").toLowerCase().includes(q) ||
+    (o.receipt || "").toLowerCase().includes(q) ||
+    (o.id || "").toLowerCase().includes(q)
+  ).slice(0, 50);
+  if (!matched.length) {
+    div.innerHTML = `<div class="empty-state">no matches for &ldquo;${escapeHtml(q)}&rdquo;</div>`;
+    return;
+  }
+  div.innerHTML = `<div class="small" style="margin-bottom: 6px;">${matched.length} result${matched.length === 1 ? "" : "s"}</div>` + matched.map(renderOrderCard).join("");
+  bindOrderCardClicks(div);
+}
+$("order-search").addEventListener("input", (e) => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    orderSearchFilter = e.target.value;
+    renderSearchResults();
+  }, 200);
+});
+
+// Tenant filter — change triggers a refresh.
+const _tenantFilterInput = $("tenant-filter");
+if (_tenantFilterInput) {
+  _tenantFilterInput.addEventListener("change", (e) => {
+    tenantFilter = e.target.value.trim();
+    manualRefresh();
+  });
+}
+
+// Click-to-jump on journey summary chips.
+function jumpToFirstStepOfKind(kind) {
+  // kind: 'done' | 'active' | 'pending' | 'skipped' | 'failed'
+  const root = $("journey");
+  const candidates = root.querySelectorAll(".step." + kind);
+  if (!candidates.length) return;
+  const target = candidates[0];
+  target.classList.remove("jump-target");
+  // Force reflow to retrigger animation.
+  // eslint-disable-next-line no-unused-expressions
+  void target.offsetWidth;
+  target.classList.add("jump-target");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Delegate clicks on chips inside #journey-summary.
+$("journey-summary").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip.clickable");
+  if (!chip) return;
+  const kind = chip.getAttribute("data-jump");
+  if (!kind) return;
+  jumpToFirstStepOfKind(kind);
+});
+
+// ============================================================
+// Order detail header
+// ============================================================
+function renderDetailHeader(flow) {
+  const host = $("detail-header");
+  host.classList.remove("empty");
+  if (!flow) {
+    host.classList.add("empty");
+    host.innerHTML = `<div class="icon">◇</div><div class="msg">Select a transaction on the left to trace its journey through the payment pipeline.</div>`;
+    return;
+  }
+  const o = flow.order;
+  const tsChip = (label, val) => `
+    <span class="ts-chip ${val ? 'set' : ''}">
+      <span class="label">${label}</span>
+      ${val ? `<span class="check">✓</span>` : `<span class="dash">—</span>`}
+    </span>`;
+  host.innerHTML = `
+    <div class="detail-row">
+      <span class="pill ${o.status}">${o.status}</span>
+      ${copyableHtml(o.razorpay_order_id, "rzp")}
+      ${copyableHtml(o.id, "order_id")}
+      <span style="margin-left:auto; font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 500;">
+        ₹ ${(o.amount/100).toFixed(2)}
+      </span>
+    </div>
+    <div class="detail-row">
+      <span class="small">receipt:</span>
+      <span class="mono" style="font-size: 11px;">${escapeHtml(o.receipt || '—')}</span>
+      ${copyableHtml(o.correlation_id, "correlation_id")}
+    </div>
+    <div class="timestamps">
+      ${tsChip("created", o.created_at)}
+      ${tsChip("attempted", o.attempted_at)}
+      ${tsChip("authorized", o.authorized_at)}
+      ${tsChip("paid", o.paid_at)}
+      ${tsChip("fulfilled", o.fulfilled_at)}
+      ${o.failed_at ? tsChip("failed", o.failed_at) : ""}
+      ${o.refunded_at ? tsChip("refunded", o.refunded_at) : ""}
+    </div>
+  `;
+  bindCopyables(host);
+}
+
+// ============================================================
+// State machine — horizontal node graph with branches
+// ============================================================
+function renderStateGraph(orderArg) {
+  // Accept either a status string (legacy) or the full order object.
+  // The order object lets us mark each visited main-path state green
+  // based on its `*_at` timestamps, so a `failed` order still shows the
+  // `created` it actually passed through.
+  const o = (typeof orderArg === "string") ? { status: orderArg } : (orderArg || {});
+  const status = o.status;
+  const host = $("state-graph");
+  const main = ["initializing","created","attempted","authorized","paid","fulfilled"];
+  const isFul = status === "fulfilled";
+  const isRef = status === "refunded";
+  const isFailed = status === "failed";
+  const isFulFail = status === "fulfillment_failed";
+
+  // Has the order moved past this main-path state?
+  //   - initializing: implicit start; visited iff status has moved past it.
+  //   - everything else: timestamp column on `orders` (created_at,
+  //     attempted_at, authorized_at, paid_at, fulfilled_at).
+  function visited(s) {
+    if (s === "initializing") return !!status && status !== "initializing";
+    return !!o[s + "_at"];
+  }
+
+  const cls = (s, i) => {
+    if (status === s) return "active";          // currently here
+    if (isRef || isFul) return "past";          // terminal happy: all green
+    if (visited(s)) return "past";              // visited based on timestamps
+    return "";
+  };
+
+  let html = `<div class="lane">`;
+  main.forEach((s, i) => {
+    const c = cls(s, i);
+    html += `<span class="state-node ${c}">${s}</span>`;
+    if (i < main.length - 1) html += `<span class="state-arrow">→</span>`;
+  });
+  html += `</div>`;
+  html += `<div class="branch">
+    <span class="branch-label">on refund:</span>
+    <span class="state-arrow">⤷</span>
+    <span class="state-node ${isRef ? 'active' : ''}">refunded</span>
+  </div>`;
+  html += `<div class="branch">
+    <span class="branch-label">on failure:</span>
+    <span class="state-arrow fail">⤷</span>
+    <span class="state-node fail-branch ${isFailed ? 'failed-state' : ''}">failed</span>
+    <span class="state-arrow fail">·</span>
+    <span class="state-node fail-branch ${isFulFail ? 'failed-state' : ''}">fulfillment_failed</span>
+  </div>`;
+  host.innerHTML = html;
+}
+
+// ============================================================
+// Payment Journey — preserved buildJourneySteps + new render
+// ============================================================
+function findEvent(events, to_status) {
+  return events.find(e => e.to_status === to_status);
+}
 function buildJourneySteps(flow) {
   const o = flow.order || {};
   const events = flow.order_events || [];
-  const webhooks = flow.webhook_events || [];
+  const webhooks = flow.webhook_events || [];   // backend now scopes to this order
   const payments = flow.payments || [];
   const refunds = flow.refunds || [];
-
-  const evInit = findEvent(events, "created");                            // initializing -> created
-  const evAttempt = findEvent(events, "attempted");                       // -> attempted
-  const evAuthorize = findEvent(events, "authorized");                    // -> authorized
-  const evPaid = findEvent(events, "paid");                               // -> paid
-  const evFulfill = findEvent(events, "fulfilled");                       // -> fulfilled
-  const evRefund = findEvent(events, "refunded");                         // -> refunded
+  const evInit = findEvent(events, "created");
+  const evAttempt = findEvent(events, "attempted");
+  const evAuthorize = findEvent(events, "authorized");
+  const evPaid = findEvent(events, "paid");
+  const evFulfill = findEvent(events, "fulfilled");
+  const evRefund = findEvent(events, "refunded");
   const evFail = findEvent(events, "failed");
   const evFulfillFail = findEvent(events, "fulfillment_failed");
-
-  const lastWebhook = webhooks.slice().sort((a,b) => (b.received_at || "").localeCompare(a.received_at || ""))[0];
   const capturedWebhook = webhooks.find(w => w.event === "payment.captured");
   const authorizedWebhook = webhooks.find(w => w.event === "payment.authorized");
   const refundWebhook = webhooks.find(w => w.event === "refund.processed");
-
-  const isFulfilled = o.status === "fulfilled";
-  const isFailedTerminal = ["failed","fulfillment_failed","refunded"].includes(o.status);
   const capPayment = payments.find(p => p.is_authoritative);
 
   const steps = [];
-
-  // ---- BROWSER / FRONTEND ----
-  steps.push({ lane: "Browser — checkout begins" });
-
-  steps.push({
-    title: "Customer clicked Pay",
+  steps.push({ lane: "🌐 Browser — checkout begins" });
+  steps.push({ title: "Customer clicked Pay",
     desc: "Frontend POSTs to /payments/orders.",
     done: !!o.id,
     evidence: o.id ? `order_id=${o.id}` : "",
-    ts: o.created_at ? shortTs(o.created_at) : "",
-  });
+    ts: o.created_at ? shortTs(o.created_at) : "", tsIso: o.created_at });
 
-  // ---- SERVER: order creation ----
-  steps.push({ lane: "Server — order pre-creation" });
-
-  steps.push({
-    title: "Order row inserted (initializing)",
+  steps.push({ lane: "⚙️ Server — order pre-creation" });
+  steps.push({ title: "Order row inserted (initializing)",
     desc: "Local DB row created before any Razorpay call. Critical invariant: DB before Razorpay.",
     done: !!evInit,
     evidence: evInit ? `from=${evInit.from_status} → to=${evInit.to_status} trigger=${evInit.trigger}` : "",
-    ts: evInit ? shortTs(evInit.created_at) : "",
-  });
-
-  steps.push({
-    title: "POST api.razorpay.com/v1/orders",
-    desc: "Server calls Razorpay over HTTPS with the project's key_id/secret. Returns razorpay_order_id.",
+    ts: evInit ? shortTs(evInit.created_at) : "", tsIso: evInit?.created_at });
+  steps.push({ title: "POST api.razorpay.com/v1/orders",
+    desc: "Server calls Razorpay over HTTPS with the project's key_id/secret.",
     done: !!o.razorpay_order_id,
-    evidence: o.razorpay_order_id ? `razorpay_order_id=${o.razorpay_order_id}` : "",
-  });
-
-  steps.push({
-    title: "Order transitioned to 'created'",
+    evidence: o.razorpay_order_id ? `razorpay_order_id=${o.razorpay_order_id}` : "" });
+  steps.push({ title: "Order transitioned to 'created'",
     desc: "DB updated with razorpay_order_id. Frontend now has everything needed to open the modal.",
     done: o.status !== "initializing" && o.status,
-    evidence: `status=${o.status}`,
-  });
+    evidence: `status=${o.status}` });
 
-  // ---- RAZORPAY MODAL ----
-  steps.push({ lane: "Razorpay — customer pays" });
-
-  steps.push({
-    title: "Razorpay checkout modal opens",
+  steps.push({ lane: "💳 Razorpay — customer pays" });
+  steps.push({ title: "Razorpay checkout modal opens",
     desc: "checkout.js loads on the storefront page. Customer enters UPI / card.",
-    done: !!o.razorpay_order_id,  // we don't observe modal open directly; treat as done once we have a rzp order id
-    evidence: "",
-  });
-
-  steps.push({
-    title: "Customer authorizes payment",
+    done: !!o.razorpay_order_id, evidence: "" });
+  steps.push({ title: "Customer authorizes payment",
     desc: "Razorpay processes UPI / card / netbanking. On success, modal returns razorpay_payment_id and a signature.",
     done: !!(capPayment || capturedWebhook || authorizedWebhook || evAttempt),
-    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "",
-  });
+    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "" });
 
-  // ---- VERIFY CALLBACK ----
-  steps.push({ lane: "Server — signature verification" });
-
-  steps.push({
-    title: "POST /payments/verify-callback",
+  steps.push({ lane: "🔐 Server — signature verification" });
+  steps.push({ title: "POST /payments/verify-callback",
     desc: "Frontend hands the signature to the server. Server HMAC-verifies order_id|payment_id against key_secret.",
     done: !!evAttempt && evAttempt.trigger === "verify-callback",
     evidence: (evAttempt && evAttempt.trigger === "verify-callback") ? "trigger=verify-callback" : "",
     skipped: !!evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted,
-    skippedReason: "auto-hop in consumer covered this",
-  });
+    skippedReason: "auto-hop in consumer covered this" });
 
-  // ---- WEBHOOK ----
-  steps.push({ lane: "Razorpay → our webhook" });
-
-  steps.push({
-    title: "Razorpay POSTs payment.captured webhook",
+  steps.push({ lane: "📨 Razorpay → our webhook" });
+  steps.push({ title: "Razorpay POSTs payment.captured webhook",
     desc: "In production, Razorpay servers POST to /payments/webhook/{tenant}. Locally, /dev/simulate fires the same call.",
     done: !!capturedWebhook,
     evidence: capturedWebhook ? `event_id=${capturedWebhook.event_id}` : "",
-    ts: capturedWebhook ? shortTs(capturedWebhook.received_at) : "",
-  });
-
-  steps.push({
-    title: "Producer verifies HMAC signature",
-    desc: "x-razorpay-signature header matched against tenant's webhook_secret (with previous secret fallback). Runs before payload parse.",
-    done: !!capturedWebhook,  // if the row exists, signature passed (producer rejects otherwise)
-    evidence: capturedWebhook ? "signature OK" : "",
-  });
-
-  steps.push({
-    title: "Producer publishes to webhook-events.fifo",
+    ts: capturedWebhook ? shortTs(capturedWebhook.received_at) : "", tsIso: capturedWebhook?.received_at });
+  steps.push({ title: "Producer verifies HMAC signature",
+    desc: "x-razorpay-signature header matched against tenant's webhook_secret. Runs before payload parse.",
+    done: !!capturedWebhook, evidence: capturedWebhook ? "signature OK" : "" });
+  steps.push({ title: "Producer publishes to webhook-events.fifo",
     desc: "Returns 200 to Razorpay in <500ms. No DB access in producer.",
     done: !!capturedWebhook,
-    evidence: capturedWebhook ? `correlation_id=${capturedWebhook.correlation_id}` : "",
-  });
+    evidence: capturedWebhook ? `correlation_id=${capturedWebhook.correlation_id}` : "" });
 
-  // ---- CONSUMER ----
-  steps.push({ lane: "Consumer Lambda — webhook processing" });
-
-  steps.push({
-    title: "Consumer receives SQS message",
+  steps.push({ lane: "⚡ Consumer Lambda — webhook processing" });
+  steps.push({ title: "Consumer receives SQS message",
     desc: "Long-poll receive_message. Envelope parsed.",
     done: !!capturedWebhook && capturedWebhook.processing_status !== null,
-    evidence: capturedWebhook ? `processing_status=${capturedWebhook.processing_status}` : "",
-  });
-
-  steps.push({
-    title: "Fast-path dedup + FOR UPDATE row lock",
-    desc: "ON CONFLICT (tenant_id, event_id) DO NOTHING. Then SELECT ... FOR UPDATE on orders. Primary idempotency guard runs.",
-    done: !!evPaid,
-    evidence: evPaid ? "row locked, guard PROCEED" : "",
-  });
-
-  steps.push({
-    title: "Auto-hop created → attempted",
-    desc: "Consumer inserts missing attempted hop when webhook arrives on a still-created order (server-to-server or verify-callback-less flow).",
+    failed: !!capturedWebhook && capturedWebhook.processing_status === "failed",
+    evidence: capturedWebhook ? `processing_status=${capturedWebhook.processing_status}` : "" });
+  steps.push({ title: "Fast-path dedup + FOR UPDATE row lock",
+    desc: "ON CONFLICT (tenant_id, event_id) DO NOTHING. Then SELECT ... FOR UPDATE on orders.",
+    done: !!evPaid, evidence: evPaid ? "row locked, guard PROCEED" : "" });
+  steps.push({ title: "Auto-hop created → attempted",
+    desc: "Consumer inserts missing attempted hop when webhook arrives on a still-created order.",
     done: !!(evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted),
     evidence: (evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted)
       ? `auto_attempted=true ${shortTs(evAttempt.created_at)}` : "",
+    tsIso: (evAttempt && evAttempt.metadata && evAttempt.metadata.auto_attempted) ? evAttempt.created_at : undefined,
     skipped: !!(evAttempt && (!evAttempt.metadata || !evAttempt.metadata.auto_attempted)),
-    skippedReason: "verify-callback already set attempted",
-  });
-
-  steps.push({
-    title: "Transition attempted → paid",
+    skippedReason: "verify-callback already set attempted" });
+  steps.push({ title: "Transition attempted → paid",
     desc: "OrderService.transition asserts allowed edge. INSERT payments row with is_authoritative=TRUE.",
+    done: !!evPaid, evidence: "",
+    ts: evPaid ? shortTs(evPaid.created_at) : "", tsIso: evPaid?.created_at });
+  steps.push({ title: "Publish to fulfillment-queue.fifo",
+    desc: "After commit (Critical Invariant 8). Carries correlation_id in MessageAttributes.",
     done: !!evPaid,
-    evidence: evPaid ? "" : "",
-    ts: evPaid ? shortTs(evPaid.created_at) : "",
-  });
+    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "" });
 
-  steps.push({
-    title: "Publish to fulfillment-queue.fifo",
-    desc: "After commit (Critical Invariant 8: DB before side effects). Carries correlation_id in MessageAttributes.",
-    done: !!evPaid,
-    evidence: capPayment ? `razorpay_payment_id=${capPayment.razorpay_payment_id}` : "",
-  });
+  // #1: hide Fulfillment lane entirely when the order is in a terminal
+  // pre-paid state (failed). Fulfillment never runs without paid; showing
+  // those steps as "pending" is misleading.
+  const fulfillmentRelevant = o.status !== "failed";
+  if (fulfillmentRelevant) {
+    steps.push({ lane: "📦 Fulfillment Lambda" });
+    steps.push({ title: "Fulfillment receives message",
+      desc: "SQS event-source mapping invokes the function. Order row locked again.",
+      done: !!evFulfill, evidence: "" });
+    steps.push({ title: "FulfillmentHook.fulfill() runs",
+      desc: "Host application code. Must be idempotent.",
+      done: !!evFulfill,
+      failed: o.status === "fulfillment_failed",
+      evidence: o.status === "fulfillment_failed" ? "hook raised — see logs" : "" });
+    steps.push({ title: "Transition paid → fulfilled",
+      desc: "Order reaches terminal happy state. order_events row written with trigger='fulfillment'.",
+      done: !!evFulfill, evidence: "",
+      ts: evFulfill ? shortTs(evFulfill.created_at) : "",
+      tsIso: evFulfill?.created_at });
+  }
 
-  // ---- FULFILLMENT ----
-  steps.push({ lane: "Fulfillment Lambda" });
+  // Outcome adapts to actual order status. `failed` is a NORMAL outcome
+  // (customer's payment declined), not a system failure. Only
+  // `fulfillment_failed` represents a genuine system failure.
+  steps.push({ lane: "🏁 Outcome" });
+  if (o.status === "fulfilled") {
+    steps.push({ title: "Order fulfilled — customer sees success page",
+      desc: "Storefront finishes polling. End of happy path.",
+      done: true, evidence: `status=${o.status}`,
+      ts: o.fulfilled_at ? shortTs(o.fulfilled_at) : "", tsIso: o.fulfilled_at });
+  } else if (o.status === "refunded") {
+    steps.push({ title: "Order refunded — terminal",
+      desc: "Customer refunded after capture. Funds returned to source.",
+      done: true, evidence: `status=${o.status}`,
+      ts: o.refunded_at ? shortTs(o.refunded_at) : "" });
+  } else if (o.status === "failed") {
+    steps.push({ title: "Order ended at failed (payment declined)",
+      desc: "Customer's payment did not complete. Not a system failure — the pipeline correctly recorded the decline.",
+      done: true, evidence: `status=${o.status}`,
+      ts: o.failed_at ? shortTs(o.failed_at) : "" });
+  } else if (o.status === "fulfillment_failed") {
+    steps.push({ title: "Fulfillment failed",
+      desc: "Payment captured but FulfillmentHook raised. See docs/runbooks/stuck-paid-order.md.",
+      failed: true, evidence: `status=${o.status}`,
+      ts: o.fulfillment_failed_at ? shortTs(o.fulfillment_failed_at) : "" });
+  } else {
+    steps.push({ title: "Order in-flight",
+      desc: "Pipeline has not reached a terminal state yet.",
+      evidence: `status=${o.status}` });
+  }
 
-  steps.push({
-    title: "Fulfillment receives message",
-    desc: "SQS event-source mapping invokes the function. Order row locked again.",
-    done: !!evFulfill,
-    evidence: "",
-  });
-
-  steps.push({
-    title: "FulfillmentHook.fulfill() runs",
-    desc: "Host application code (in this dev backend: DefaultFulfillmentHook which is a no-op). Must be idempotent.",
-    done: !!evFulfill,
-    evidence: "",
-  });
-
-  steps.push({
-    title: "Transition paid → fulfilled",
-    desc: "Order reaches terminal happy state. order_events row written with trigger='fulfillment'.",
-    done: !!evFulfill,
-    evidence: evFulfill ? "" : "",
-    ts: evFulfill ? shortTs(evFulfill.created_at) : "",
-  });
-
-  // ---- TERMINAL ----
-  steps.push({ lane: "Outcome" });
-
-  steps.push({
-    title: "Order fulfilled — customer sees success page",
-    desc: "Storefront finishes polling. End of happy path.",
-    done: isFulfilled,
-    failed: isFailedTerminal && !isFulfilled,
-    evidence: `status=${o.status}`,
-    ts: o.fulfilled_at ? shortTs(o.fulfilled_at) : "",
-  });
-
-  // Optional: refund leg
+  // Optional refund leg — only shows when THIS order has refund evidence.
   if (refunds.length || refundWebhook || evRefund) {
-    steps.push({ lane: "Refund (optional)" });
-    steps.push({
-      title: "refund.processed webhook arrives",
+    steps.push({ lane: "💸 Refund (optional)" });
+    steps.push({ title: "refund.processed webhook arrives",
       desc: "Customer (or admin) initiated a refund through Razorpay.",
       done: !!refundWebhook,
       evidence: refundWebhook ? `event_id=${refundWebhook.event_id}` : "",
-      ts: refundWebhook ? shortTs(refundWebhook.received_at) : "",
-    });
-    steps.push({
-      title: "Order transitioned to refunded",
+      ts: refundWebhook ? shortTs(refundWebhook.received_at) : "" });
+    steps.push({ title: "Order transitioned to refunded",
       desc: "UPDATE existing captured payments row to status='refunded'. INSERT refunds row.",
       done: !!evRefund,
       evidence: refunds[0] ? `razorpay_refund_id=${refunds[0].razorpay_refund_id}` : "",
-      ts: evRefund ? shortTs(evRefund.created_at) : "",
-    });
+      ts: evRefund ? shortTs(evRefund.created_at) : "" });
   }
-
   return steps;
 }
 
 function renderJourney(flow) {
   const root = $("journey");
   const summaryEl = $("journey-summary");
+  const banner = $("failure-banner-host");
+  if (banner) banner.innerHTML = "";
   if (!flow) {
-    root.innerHTML = "<div class='small'>Pick an order on the left to see the full payment journey.</div>";
+    root.innerHTML = "<div class='empty-state'>Pick an order to see the full payment journey.</div>";
     summaryEl.innerHTML = "";
+    $("journey-step-count").textContent = "";
     return;
   }
   const steps = buildJourneySteps(flow);
-
-  // Mark the first non-done non-skipped step as "active".
   let foundActive = false;
   steps.forEach(s => {
     if (s.lane) return;
     if (!foundActive && !s.done && !s.skipped && !s.failed) {
-      s.active = true;
-      foundActive = true;
+      s.active = true; foundActive = true;
     }
   });
-
-  // Stats chips
   const total = steps.filter(s => !s.lane).length;
-  const done  = steps.filter(s => !s.lane && s.done).length;
+  const done = steps.filter(s => !s.lane && s.done).length;
   const skipped = steps.filter(s => !s.lane && s.skipped).length;
   const failed = steps.filter(s => !s.lane && s.failed).length;
+  $("journey-step-count").textContent = `${done}/${total}`;
   summaryEl.innerHTML = `
-    <span class="chip">${done}/${total} done</span>
-    <span class="chip" style="color: var(--good)">✓ ${done}</span>
-    <span class="chip" style="color: var(--accent)">◐ ${foundActive ? 1 : 0} active</span>
-    <span class="chip" style="color: var(--idle)">○ ${total - done - skipped - failed - (foundActive?1:0)} pending</span>
-    ${skipped ? `<span class="chip" style="color: var(--idle)">⊘ ${skipped} skipped</span>` : ""}
-    ${failed ? `<span class="chip" style="color: var(--bad)">✕ ${failed} failed</span>` : ""}
+    <span class="chip good clickable" data-jump="done" title="jump to first done step">✓ ${done}</span>
+    ${foundActive ? `<span class="chip active clickable" data-jump="active" title="jump to active step">◐ 1 active</span>` : ""}
+    <span class="chip clickable" data-jump="pending" title="jump to first pending step">○ ${total - done - skipped - failed - (foundActive ? 1 : 0)} pending</span>
+    ${skipped ? `<span class="chip clickable" data-jump="skipped" title="jump to first skipped step">⊘ ${skipped} skipped</span>` : ""}
+    ${failed ? `<span class="chip bad clickable" data-jump="failed" title="jump to failed step">✕ ${failed} failed</span>` : ""}
   `;
+  if (failed > 0 && banner) {
+    let failStep = steps.find(s => s.failed);
+    let stepNum = 0, n = 0;
+    for (const s of steps) {
+      if (s.lane) continue;
+      n++;
+      if (s === failStep) { stepNum = n; break; }
+    }
+    banner.innerHTML = `
+      <div class="failure-banner">
+        <div class="title">⚠ FAILURE DETECTED · Step ${stepNum} · ${escapeHtml(failStep.title)}</div>
+        <div>${escapeHtml(failStep.desc)}</div>
+        ${failStep.evidence ? `<div class="evidence">${escapeHtml(failStep.evidence)}</div>` : ""}
+      </div>`;
+    if ($("details-webhook-events")) $("details-webhook-events").open = true;
+    if ($("details-order-events")) $("details-order-events").open = true;
+  }
+  // #9: compute durations between consecutive timestamped done steps.
+  // Walk in order; for each step with tsIso, find the previous step that
+  // also had tsIso and compute ms diff.
+  let prevIso = null;
+  steps.forEach(s => {
+    if (s.lane || !s.tsIso) return;
+    if (prevIso) {
+      const diffMs = new Date(s.tsIso).getTime() - new Date(prevIso).getTime();
+      if (diffMs >= 0) s.deltaMs = diffMs;
+    }
+    prevIso = s.tsIso;
+  });
 
-  // Render steps
+  // #7: map step title → webhook event type so DB rows can scroll to step.
+  const titleToEventType = {
+    "Razorpay POSTs payment.captured webhook": "payment.captured",
+    "Customer authorizes payment": "payment.authorized",
+    "refund.processed webhook arrives": "refund.processed",
+    "Order ended at failed (payment declined)": "payment.failed",
+    "Order ended at failed": "payment.failed",
+  };
+
   let counter = 0;
   root.innerHTML = steps.map(s => {
-    if (s.lane) return `<div class="lane">${s.lane}</div>`;
+    if (s.lane) return `<div class="lane-header"><span>${escapeHtml(s.lane)}</span></div>`;
     counter++;
     const cls = s.failed ? "failed" : s.done ? "done" : s.active ? "active" : s.skipped ? "skipped" : "pending";
     const dotChar = s.failed ? "✕" : s.done ? "✓" : s.active ? "◐" : s.skipped ? "⊘" : counter;
+    const evt = titleToEventType[s.title] || "";
+    const durationBadge = s.deltaMs != null ? (() => {
+      const cls = s.deltaMs >= 5000 ? "very-slow" : s.deltaMs >= 1000 ? "slow" : "";
+      const txt = s.deltaMs < 1000 ? s.deltaMs + "ms" : (s.deltaMs / 1000).toFixed(1) + "s";
+      return ` <span class="duration ${cls}" title="${s.deltaMs}ms since previous timestamped step">Δ ${txt}</span>`;
+    })() : "";
     return `
-      <div class="step ${cls}">
+      <div class="step ${cls}" data-event-type="${escapeHtml(evt)}">
         <div class="dot">${dotChar}</div>
         <div class="body">
-          <div class="title">${s.title}</div>
-          <div class="desc">${s.desc}${s.skipped && s.skippedReason ? ` <em>(${s.skippedReason})</em>` : ""}</div>
-          ${s.evidence ? `<div class="evidence">${s.evidence}</div>` : ""}
+          <div class="title">${escapeHtml(s.title)}${durationBadge}</div>
+          <div class="desc">${escapeHtml(s.desc)}${s.skipped && s.skippedReason ? ` <em>(${escapeHtml(s.skippedReason)})</em>` : ""}</div>
+          ${s.evidence ? `<div class="evidence">${escapeHtml(s.evidence)}</div>` : ""}
         </div>
         <div class="ts">${s.ts || ""}</div>
-      </div>
-    `;
+      </div>`;
   }).join("");
 }
 
-function setStateMachine(status) {
-  const order = ["initializing","created","attempted","authorized","paid","fulfilled"];
-  const idx = order.indexOf(status);
-  document.querySelectorAll("#state-machine .node").forEach(n => {
-    n.classList.remove("active", "past");
-  });
-  if (!status) return;
-  // Terminal off-path nodes
-  ["failed","fulfillment_failed","refunded"].forEach(s => {
-    if (status === s) {
-      const el = document.querySelector(`#state-machine .node[data-s="${s}"]`);
-      if (el) el.classList.add("active");
-    }
-  });
-  if (idx >= 0) {
-    order.forEach((s, i) => {
-      const el = document.querySelector(`#state-machine .node[data-s="${s}"]`);
-      if (!el) return;
-      if (i < idx) el.classList.add("past");
-      else if (i === idx) el.classList.add("active");
-    });
+function renderDbTables(flow) {
+  if (!flow) {
+    const oeTb = $("order-events")?.querySelector("tbody");
+    const weTb = $("webhook-events")?.querySelector("tbody");
+    if (oeTb) oeTb.innerHTML = "";
+    if (weTb) weTb.innerHTML = "";
+    if ($("payments-block")) $("payments-block").innerHTML = `<div class="empty-state">no payments yet</div>`;
+    if ($("oe-count")) $("oe-count").textContent = "";
+    if ($("we-count")) $("we-count").textContent = "";
+    if ($("p-count"))  $("p-count").textContent = "";
+    return;
   }
-}
+  if ($("oe-count")) $("oe-count").textContent = String(flow.order_events.length);
+  if ($("we-count")) $("we-count").textContent = String(flow.webhook_events.length);
+  if ($("p-count"))  $("p-count").textContent = `${flow.payments.length}P/${flow.refunds.length}R`;
+  const oeBody = $("order-events").querySelector("tbody");
+  oeBody.innerHTML = flow.order_events.map(e => `
+    <tr>
+      <td class="mono">${escapeHtml(e.created_at || "")}</td>
+      <td class="mono">${escapeHtml(e.from_status || "—")} → ${escapeHtml(e.to_status || "—")}</td>
+      <td class="mono">${escapeHtml(e.trigger || "")}</td>
+      <td class="metadata"><pre>${escapeHtml(JSON.stringify(e.metadata || {}, null, 2))}</pre></td>
+    </tr>`).join("") || `<tr><td colspan="4" class="empty-state">no transitions yet</td></tr>`;
+  const weBody = $("webhook-events").querySelector("tbody");
+  weBody.innerHTML = flow.webhook_events.map(e => `
+    <tr class="clickable" data-event-type="${escapeHtml(e.event)}" title="click to jump to corresponding journey step">
+      <td class="mono">${escapeHtml(e.received_at || "")}</td>
+      <td class="mono">${escapeHtml(e.event)}</td>
+      <td><span class="pill ${e.processing_status === 'done' ? 'done' : e.processing_status === 'failed' ? 'failed' : 'pending'}">${escapeHtml(e.processing_status || "")}</span></td>
+      <td class="mono">${escapeHtml(e.event_id || "")}</td>
+      <td class="mono">${escapeHtml(e.correlation_id || "")}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="empty-state">no webhook events</td></tr>`;
 
-function fillTable(id, rows) {
-  const tbody = document.querySelector("#" + id + " tbody");
-  // Render cells as text. Metadata column (index 4 in order-events) gets the
-  // `metadata` class so the JSON wraps and stays fully selectable for Ctrl-A.
-  const escape = (s) => String(s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  tbody.innerHTML = rows.map(cells =>
-    "<tr>" + cells.map((c, i) => {
-      const cls = i === 4 ? "metadata" : "mono";
-      // The status pill cell already contains HTML; pass it through unescaped.
-      const isHtml = typeof c === "string" && c.startsWith("<span");
-      const content = isHtml ? c : escape(c);
-      return `<td class="${cls}">${content}</td>`;
-    }).join("") + "</tr>"
-  ).join("");
-}
-
-// Pull tenant id once
-(async () => {
-  try {
-    const r = await api("/dev/flow");
-    if (r.orders[0]) { /* nothing — header still shows */ }
-  } catch (e) {}
-})();
-
-// Show tenant in header (cheap)
-fetch("/dev/queues").then(r => r.json()).then(j => {
-  // tenant not in queues, leave as is. We'll set via first order if any.
-});
-$("tenant-id").textContent = "local-dev";
-
-// ------- Test scenarios -------
-//
-// Each scenario auto-creates an order, fires a sequence of /dev/simulate
-// calls, polls /dev/flow/{order_id} until expectations match, and reports
-// pass/fail inline on the button. The goal is "click one button, see the
-// whole payment lifecycle play out and verify the invariants held".
-
-function rid() { return Math.random().toString(36).slice(2, 12); }
-
-async function so_createOrder(suffix) {
-  const r = await api("/payments/orders", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ receipt: "scen-" + suffix + "-" + rid() }),
+  // #7: click webhook row → scroll to matching journey step, flash.
+  weBody.querySelectorAll("tr.clickable").forEach(tr => {
+    tr.addEventListener("click", () => {
+      const eventType = tr.getAttribute("data-event-type");
+      if (!eventType) return;
+      const step = document.querySelector(`#journey .step[data-event-type="${eventType}"]`);
+      if (!step) return;
+      step.classList.remove("flash");
+      void step.offsetWidth;   // restart animation
+      step.classList.add("flash");
+      step.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   });
+  const pHost = $("payments-block");
+  let html = "";
+  flow.payments.forEach(p => {
+    html += `<div class="payment-card">
+      <div class="row"><span class="label">payment_id</span> ${copyableHtml(p.razorpay_payment_id, "")}</div>
+      <div class="row"><span class="label">status</span> <span class="pill ${p.status === 'captured' ? 'paid' : p.status === 'failed' ? 'failed' : 'created'}">${escapeHtml(p.status)}</span></div>
+      <div class="row"><span class="label">amount</span> ₹ ${(p.amount/100).toFixed(2)}</div>
+      <div class="row"><span class="label">authoritative</span> ${p.is_authoritative ? '<span class="pill done">true</span>' : '<span class="pill pending">false</span>'}</div>
+      <div class="row"><span class="label">attempt</span> #${p.attempt_number}</div>
+    </div>`;
+  });
+  flow.refunds.forEach(r => {
+    html += `<div class="refund-card">
+      <div class="row"><span class="label">refund_id</span> ${copyableHtml(r.razorpay_refund_id, "")}</div>
+      <div class="row"><span class="label">status</span> <span class="pill refunded">${escapeHtml(r.status)}</span></div>
+      <div class="row"><span class="label">amount</span> ₹ ${(r.amount/100).toFixed(2)}</div>
+    </div>`;
+  });
+  if (!html) html = `<div class="empty-state">no payments or refunds</div>`;
+  pHost.innerHTML = html;
+  bindCopyables(pHost);
+}
+
+// ============================================================
+// Scenarios — preserved SCENARIOS array + compact-row rendering
+// ============================================================
+function rid() { return Math.random().toString(36).slice(2, 12); }
+async function so_createOrder(suffix) {
+  const r = await api("/payments/orders", { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ receipt: "scen-" + suffix + "-" + rid() }) });
   return r;
 }
-
 async function so_fire(eventType, opts) {
-  const body = {
-    event_type: eventType,
+  const body = { event_type: eventType,
     razorpay_order_id: opts.razorpay_order_id,
     razorpay_payment_id: opts.razorpay_payment_id,
-    amount: opts.amount ?? 50000,
-  };
+    amount: opts.amount ?? 50000 };
   if (opts.event_id) body.event_id = opts.event_id;
   if (opts.force_bad_signature) body.force_bad_signature = true;
-  return await api("/dev/simulate", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return await api("/dev/simulate", { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
-
 async function so_pollFlow(orderId, predicate, timeoutMs) {
   const deadline = Date.now() + (timeoutMs ?? 10000);
   let last = null;
   while (Date.now() < deadline) {
+    if (scenarioRunAbort) return { ok: false, flow: last, aborted: true };
     try {
       last = await api("/dev/flow/" + orderId);
       if (predicate(last)) return { ok: true, flow: last };
@@ -899,37 +2023,25 @@ async function so_pollFlow(orderId, predicate, timeoutMs) {
   }
   return { ok: false, flow: last };
 }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Each scenario returns {ok, msg, flow}.
 const SCENARIOS = [
-  // ---------- HAPPY PATHS ----------
-  {
-    group: "Happy paths",
-    id: "happy_capture",
-    title: "Capture only → fulfilled",
+  { group: "Happy paths", id: "happy_capture", title: "Capture only → fulfilled",
     expect: "status=fulfilled, 1 payment authoritative=true, 4 order_events",
     async run() {
-      const o = await so_createOrder("happy-cap");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("happy-cap"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       const res = await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
-      if (!res.ok) return { ok: false, msg: "did not reach fulfilled. status=" + res.flow?.order?.status, flow: res.flow, orderId: o.order_id };
+      if (!res.ok) return { ok: false, msg: "did not reach fulfilled. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
       const p = res.flow.payments[0];
       if (!p || !p.is_authoritative) return { ok: false, msg: "payments row missing or not authoritative", orderId: o.order_id, flow: res.flow };
       if (res.flow.order_events.length < 4) return { ok: false, msg: "expected ≥4 order_events, got " + res.flow.order_events.length, orderId: o.order_id, flow: res.flow };
       return { ok: true, msg: "fulfilled in " + res.flow.order_events.length + " transitions", orderId: o.order_id, flow: res.flow };
-    },
-  },
-  {
-    group: "Happy paths",
-    id: "happy_auth_then_capture",
-    title: "Authorize → Capture → fulfilled",
+    } },
+  { group: "Happy paths", id: "happy_auth_then_capture", title: "Authorize → Capture → fulfilled",
     expect: "5 order_events, authorized_at and paid_at both set",
     async run() {
-      const o = await so_createOrder("auth-cap");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("auth-cap"); const pid = "pay_" + rid();
       await so_fire("payment.authorized", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await sleep(1500);
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
@@ -937,16 +2049,11 @@ const SCENARIOS = [
       if (!res.ok) return { ok: false, msg: "did not reach fulfilled. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
       if (!res.flow.order.authorized_at) return { ok: false, msg: "authorized_at not set", orderId: o.order_id, flow: res.flow };
       return { ok: true, msg: "auth→cap→fulfilled", orderId: o.order_id, flow: res.flow };
-    },
-  },
-  {
-    group: "Happy paths",
-    id: "happy_full_refund",
-    title: "Capture → Refund → refunded",
-    expect: "status=refunded, 1 refund row, payments.status=refunded",
+    } },
+  { group: "Happy paths", id: "happy_full_refund", title: "Capture → Refund → refunded",
+    expect: "status=refunded, 1 refund row",
     async run() {
-      const o = await so_createOrder("full-refund");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("full-refund"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
       await sleep(500);
@@ -955,18 +2062,11 @@ const SCENARIOS = [
       if (!res.ok) return { ok: false, msg: "did not reach refunded. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
       if (res.flow.refunds.length !== 1) return { ok: false, msg: "expected 1 refund row, got " + res.flow.refunds.length, orderId: o.order_id, flow: res.flow };
       return { ok: true, msg: "refunded; refunds=1", orderId: o.order_id, flow: res.flow };
-    },
-  },
-
-  // ---------- FAILURE PATHS ----------
-  {
-    group: "Failure paths",
-    id: "fail_direct",
-    title: "Direct failure (created → failed)",
+    } },
+  { group: "Failure paths", id: "fail_direct", title: "Direct failure (created → failed)",
     expect: "status=failed, 1 payment authoritative=FALSE",
     async run() {
-      const o = await so_createOrder("fail");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("fail"); const pid = "pay_" + rid();
       await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       const res = await so_pollFlow(o.order_id, f => f.order.status === "failed");
       if (!res.ok) return { ok: false, msg: "did not reach failed. status=" + res.flow?.order?.status, orderId: o.order_id, flow: res.flow };
@@ -974,17 +2074,11 @@ const SCENARIOS = [
       if (!p) return { ok: false, msg: "no payments row", orderId: o.order_id, flow: res.flow };
       if (p.is_authoritative) return { ok: false, msg: "payments.is_authoritative should be false on failed", orderId: o.order_id, flow: res.flow };
       return { ok: true, msg: "failed; payment.is_authoritative=false", orderId: o.order_id, flow: res.flow };
-    },
-  },
-  {
-    group: "Failure paths",
-    id: "fail_then_recovery",
-    title: "Failed → Captured (recovery)",
+    } },
+  { group: "Failure paths", id: "fail_then_recovery", title: "Failed → Captured (recovery)",
     expect: "status=fulfilled with metadata.recovery=true on attempted hop",
     async run() {
-      const o = await so_createOrder("fail-recover");
-      const pid_fail = "pay_" + rid();
-      const pid_ok = "pay_" + rid();
+      const o = await so_createOrder("fail-recover"); const pid_fail = "pay_" + rid(); const pid_ok = "pay_" + rid();
       await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid_fail });
       await so_pollFlow(o.order_id, f => f.order.status === "failed");
       await sleep(500);
@@ -994,41 +2088,26 @@ const SCENARIOS = [
       const recoveryEvt = res.flow.order_events.find(e => e.metadata && e.metadata.recovery === true);
       if (!recoveryEvt) return { ok: false, msg: "no order_events row with metadata.recovery=true", orderId: o.order_id, flow: res.flow };
       return { ok: true, msg: "recovered via failed→attempted→paid→fulfilled", orderId: o.order_id, flow: res.flow };
-    },
-  },
-
-  // ---------- IDEMPOTENCY ----------
-  {
-    group: "Idempotency",
-    id: "dedup_same_event_id",
-    title: "Same event_id replayed (fast-path dedup)",
-    expect: "1 payment row, 1 webhook_events row (second replay deduped)",
+    } },
+  { group: "Idempotency", id: "dedup_same_event_id", title: "Same event_id replayed (fast-path dedup)",
+    expect: "1 payment row, 1 paid transition",
     async run() {
-      const o = await so_createOrder("dedup-same");
-      const pid = "pay_" + rid();
-      const evt = "evt_" + rid() + rid();
+      const o = await so_createOrder("dedup-same"); const pid = "pay_" + rid(); const evt = "evt_" + rid() + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, event_id: evt });
       await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
       await sleep(300);
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, event_id: evt });
       await sleep(1500);
       const f = await api("/dev/flow/" + o.order_id);
-      const whForOrder = f.webhook_events.filter(w => w.event === "payment.captured");
-      // Note: webhook_events table shows all per-tenant; we check payments instead.
       if (f.payments.length !== 1) return { ok: false, msg: "expected 1 payments row, got " + f.payments.length, orderId: o.order_id, flow: f };
       const paidEvts = f.order_events.filter(e => e.to_status === "paid");
       if (paidEvts.length !== 1) return { ok: false, msg: "expected 1 paid transition, got " + paidEvts.length, orderId: o.order_id, flow: f };
-      return { ok: true, msg: "fast-path dedup OK: 1 payment, 1 paid transition", orderId: o.order_id, flow: f };
-    },
-  },
-  {
-    group: "Idempotency",
-    id: "dedup_diff_event_id_same_payment",
-    title: "Different event_id, same payment (primary guard)",
-    expect: "1 payment, 1 paid transition. Second replay caught by FOR UPDATE guard.",
+      return { ok: true, msg: "fast-path dedup OK", orderId: o.order_id, flow: f };
+    } },
+  { group: "Idempotency", id: "dedup_diff_event_id_same_payment", title: "Different event_id, same payment",
+    expect: "1 payment despite 2 webhooks (primary guard)",
     async run() {
-      const o = await so_createOrder("dedup-diff");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("dedup-diff"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
       await sleep(300);
@@ -1038,61 +2117,37 @@ const SCENARIOS = [
       if (f.payments.length !== 1) return { ok: false, msg: "expected 1 payments row, got " + f.payments.length, orderId: o.order_id, flow: f };
       const paidEvts = f.order_events.filter(e => e.to_status === "paid");
       if (paidEvts.length !== 1) return { ok: false, msg: "expected 1 paid transition, got " + paidEvts.length, orderId: o.order_id, flow: f };
-      return { ok: true, msg: "primary guard OK: 1 payment despite 2 webhook events", orderId: o.order_id, flow: f };
-    },
-  },
-
-  // ---------- EDGE CASES ----------
-  {
-    group: "Edge cases",
-    id: "amount_mismatch",
-    title: "Amount mismatch (50000 order, 40000 webhook)",
-    expect: "webhook_events.processing_status=failed, order stays in created",
+      return { ok: true, msg: "primary guard OK: 1 payment", orderId: o.order_id, flow: f };
+    } },
+  { group: "Edge cases", id: "amount_mismatch", title: "Amount mismatch (50000 order, 40000 webhook)",
+    expect: "webhook processing_status=failed, order stays in created",
     async run() {
-      const o = await so_createOrder("amt-mismatch");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("amt-mismatch"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, amount: 40000 });
       await sleep(3000);
       const f = await api("/dev/flow/" + o.order_id);
-      if (f.order.status === "fulfilled" || f.order.status === "paid") {
-        return { ok: false, msg: "order transitioned despite amount mismatch: status=" + f.order.status, orderId: o.order_id, flow: f };
-      }
-      // Look for a webhook_events row marked 'failed' for this tenant.
-      const failedWh = f.webhook_events.find(w => w.processing_status === "failed");
-      // If we can't see it (table is tenant-wide and may be paginated), at minimum order must not have advanced.
-      return { ok: true, msg: "rejected; order.status=" + f.order.status + (failedWh ? "; webhook_events.processing_status=failed seen" : ""), orderId: o.order_id, flow: f };
-    },
-  },
-  {
-    group: "Edge cases",
-    id: "stale_failed_after_fulfilled",
-    title: "Stale payment.failed arriving after fulfilled",
-    expect: "STALE_NO_OP — order stays fulfilled, no transition",
+      if (f.order.status === "fulfilled" || f.order.status === "paid") return { ok: false, msg: "order transitioned despite amount mismatch: status=" + f.order.status, orderId: o.order_id, flow: f };
+      return { ok: true, msg: "rejected; order.status=" + f.order.status, orderId: o.order_id, flow: f };
+    } },
+  { group: "Edge cases", id: "stale_failed_after_fulfilled", title: "Stale payment.failed after fulfilled",
+    expect: "STALE_NO_OP — order stays fulfilled",
     async run() {
-      const o = await so_createOrder("stale-fail");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("stale-fail"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
       await sleep(300);
       await so_fire("payment.failed", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await sleep(2500);
       const f = await api("/dev/flow/" + o.order_id);
-      if (f.order.status !== "fulfilled") {
-        return { ok: false, msg: "fulfilled order regressed to " + f.order.status, orderId: o.order_id, flow: f };
-      }
+      if (f.order.status !== "fulfilled") return { ok: false, msg: "fulfilled order regressed to " + f.order.status, orderId: o.order_id, flow: f };
       const failedEvt = f.order_events.find(e => e.to_status === "failed");
       if (failedEvt) return { ok: false, msg: "spurious failed transition appeared", orderId: o.order_id, flow: f };
-      return { ok: true, msg: "stale event ignored; status=fulfilled", orderId: o.order_id, flow: f };
-    },
-  },
-  {
-    group: "Edge cases",
-    id: "order_paid_log_only",
-    title: "order.paid event (log-only, no state change)",
-    expect: "No new transition; order stays where it was",
+      return { ok: true, msg: "stale event ignored", orderId: o.order_id, flow: f };
+    } },
+  { group: "Edge cases", id: "order_paid_log_only", title: "order.paid event (log-only)",
+    expect: "no new transition",
     async run() {
-      const o = await so_createOrder("order-paid");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("order-paid"); const pid = "pay_" + rid();
       await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await so_pollFlow(o.order_id, f => f.order.status === "fulfilled");
       await sleep(300);
@@ -1101,150 +2156,193 @@ const SCENARIOS = [
       await so_fire("order.paid", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid });
       await sleep(2500);
       const after = await api("/dev/flow/" + o.order_id);
-      if (after.order_events.length !== beforeCount) {
-        return { ok: false, msg: "order.paid caused " + (after.order_events.length - beforeCount) + " new transitions", orderId: o.order_id, flow: after };
-      }
-      return { ok: true, msg: "log-only confirmed; events stayed at " + beforeCount, orderId: o.order_id, flow: after };
-    },
-  },
-
-  // ---------- BAD INPUT ----------
-  {
-    group: "Bad input",
-    id: "bad_signature",
-    title: "Bad signature (producer rejects 4xx, no DB write)",
-    expect: "producer returns 4xx, order stays in created, no payments row",
+      if (after.order_events.length !== beforeCount) return { ok: false, msg: "order.paid caused " + (after.order_events.length - beforeCount) + " new transitions", orderId: o.order_id, flow: after };
+      return { ok: true, msg: "log-only confirmed", orderId: o.order_id, flow: after };
+    } },
+  { group: "Bad input", id: "bad_signature", title: "Bad signature (producer rejects 4xx)",
+    expect: "producer returns 4xx, no DB writes",
     async run() {
-      const o = await so_createOrder("bad-sig");
-      const pid = "pay_" + rid();
+      const o = await so_createOrder("bad-sig"); const pid = "pay_" + rid();
       let producerCode = null;
       try {
-        const r = await so_fire("payment.captured", {
-          razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid,
-          force_bad_signature: true,
-        });
+        const r = await so_fire("payment.captured", { razorpay_order_id: o.razorpay_order_id, razorpay_payment_id: pid, force_bad_signature: true });
         producerCode = r.status_code;
-      } catch (e) {
-        // /dev/simulate may surface non-2xx via thrown error.
-        producerCode = e.status || -1;
-      }
-      // Allow any 4xx — both 400 (malformed envelope) and 401 (auth) are defensible.
-      if (!(producerCode >= 400 && producerCode < 500)) {
-        return { ok: false, msg: "expected 4xx from producer, got " + producerCode, orderId: o.order_id };
-      }
-      // Confirm DB side-effect didn't happen.
+      } catch (e) { producerCode = e.status || -1; }
+      if (!(producerCode >= 400 && producerCode < 500)) return { ok: false, msg: "expected 4xx, got " + producerCode, orderId: o.order_id };
       await sleep(1500);
       const f = await api("/dev/flow/" + o.order_id);
-      if (f.order.status !== "created") {
-        return { ok: false, msg: "order advanced despite bad sig: status=" + f.order.status, orderId: o.order_id, flow: f };
-      }
-      if (f.payments.length !== 0) {
-        return { ok: false, msg: "payments row written despite bad sig", orderId: o.order_id, flow: f };
-      }
+      if (f.order.status !== "created") return { ok: false, msg: "order advanced despite bad sig", orderId: o.order_id, flow: f };
+      if (f.payments.length !== 0) return { ok: false, msg: "payments row written despite bad sig", orderId: o.order_id, flow: f };
       return { ok: true, msg: "producer rejected with " + producerCode + "; no DB writes", orderId: o.order_id, flow: f };
-    },
-  },
+    } },
 ];
 
 function renderScenarios() {
   const root = $("scenarios");
-  // Group by group label
+  if (!root) return;
   const groups = {};
   SCENARIOS.forEach(s => { (groups[s.group] = groups[s.group] || []).push(s); });
-  root.innerHTML = Object.entries(groups).map(([label, list]) => `
-    <div class="scenario-group">
-      <div class="scenario-group-label">${label}</div>
-      ${list.map(s => `
-        <button class="scenario-btn" data-id="${s.id}">
-          <div class="s-title">${s.title}</div>
-          <div class="s-expect">${s.expect}</div>
-          <div class="scenario-result" id="result-${s.id}"></div>
-        </button>
-      `).join("")}
+  root.innerHTML = Object.entries(groups).map(([label, list]) => {
+    return `<details class="scenario-group" open>
+      <summary>${escapeHtml(label)} (${list.length})</summary>
+      <div>${list.map(renderScenarioRow).join("")}</div>
+    </details>`;
+  }).join("");
+  bindScenarioRowEvents();
+  if ($("scenarios-meta")) $("scenarios-meta").textContent = `${SCENARIOS.length}`;
+}
+function renderScenarioRow(s) {
+  const res = SCENARIO_RESULTS[s.id];
+  const rowClass = res ? (res.ok ? "pass" : "fail") : "";
+  const icon = res
+    ? (res.running ? `<span class="status-icon run">◌</span>`
+        : (res.ok ? `<span class="status-icon pass">✓</span>` : `<span class="status-icon fail">✕</span>`))
+    : `<span class="status-icon idle">●</span>`;
+  return `
+    <div class="scenario-row ${rowClass}" data-id="${s.id}">
+      ${icon}
+      <span class="name">${escapeHtml(s.title)}</span>
+      <button class="btn run-btn" data-run="${s.id}">Run</button>
+      <span class="result ${res ? (res.ok ? 'pass' : 'fail') : ''}">${res ? (res.ok ? "PASS" : "FAIL") : "—"}</span>
     </div>
-  `).join("");
-  root.querySelectorAll(".scenario-btn").forEach(btn => {
-    btn.addEventListener("click", () => runScenarioBtn(btn.dataset.id, btn));
+    ${res && res.expanded ? `
+      <div class="scenario-detail">
+        <div class="label">Expect</div>${escapeHtml(s.expect)}
+        ${res.msg ? `<div class="label">Result</div>${escapeHtml(res.msg)}` : ""}
+      </div>` : ""}
+  `;
+}
+function bindScenarioRowEvents() {
+  document.querySelectorAll(".scenario-row").forEach(row => {
+    const id = row.getAttribute("data-id");
+    row.addEventListener("click", (e) => {
+      if (e.target.matches(".run-btn")) return;
+      const r = SCENARIO_RESULTS[id] || {};
+      r.expanded = !r.expanded;
+      SCENARIO_RESULTS[id] = r;
+      renderScenarios();
+    });
+  });
+  document.querySelectorAll(".scenario-row .run-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute("data-run");
+      const s = SCENARIOS.find(x => x.id === id);
+      if (s) runScenario(s);
+    });
   });
 }
-
-async function runScenarioBtn(id, btn) {
-  const s = SCENARIOS.find(x => x.id === id);
-  if (!s) return;
-  btn.classList.remove("passed", "failed");
-  btn.classList.add("running");
-  const resEl = $("result-" + id);
-  resEl.textContent = "running…";
-  resEl.classList.remove("pass", "fail");
+async function runScenario(s) {
+  SCENARIO_RESULTS[s.id] = { running: true };
+  renderScenarios();
   log("scenario start: " + s.title);
   try {
     const res = await s.run();
-    btn.classList.remove("running");
-    btn.classList.add(res.ok ? "passed" : "failed");
-    resEl.classList.add(res.ok ? "pass" : "fail");
-    resEl.textContent = (res.ok ? "PASS · " : "FAIL · ") + res.msg;
-    log("scenario " + (res.ok ? "PASS" : "FAIL") + ": " + s.title + " — " + res.msg);
+    SCENARIO_RESULTS[s.id] = { ok: res.ok, msg: res.msg, running: false };
+    log("scenario " + (res.ok ? "PASS" : "FAIL") + ": " + s.title + " — " + res.msg, res.ok ? "pass" : "fail");
+    toast("Scenario " + (res.ok ? "PASS" : "FAIL"), s.title, res.ok ? "success" : "error");
     if (res.orderId) {
       currentOrderId = res.orderId;
       if (res.flow) currentRzpOrderId = res.flow.order.razorpay_order_id;
-      refresh();
+      await refresh();
     }
+    renderScenarios();
+    return res;
   } catch (e) {
-    btn.classList.remove("running");
-    btn.classList.add("failed");
-    resEl.classList.add("fail");
-    resEl.textContent = "ERROR · " + e.message;
-    log("scenario ERROR: " + s.title + " — " + e.message);
+    SCENARIO_RESULTS[s.id] = { ok: false, msg: "ERROR: " + e.message, running: false };
+    log("scenario ERROR: " + s.title + " — " + e.message, "error");
+    toast("Scenario ERROR", s.title + " · " + e.message, "error", 0);
+    renderScenarios();
+    return { ok: false, msg: e.message };
   }
 }
-
-// Optional: run-all button at top of scenarios
-function injectRunAll() {
-  const root = $("scenarios");
-  if (!root) return;
-  const wrap = document.createElement("div");
-  wrap.innerHTML = `<button id="run-all" class="primary" style="width:100%; margin-bottom:8px;">Run all scenarios in sequence</button>`;
-  root.parentNode.insertBefore(wrap, root);
-  $("run-all").addEventListener("click", async () => {
-    for (const s of SCENARIOS) {
-      const btn = document.querySelector(`.scenario-btn[data-id="${s.id}"]`);
-      if (btn) await runScenarioBtn(s.id, btn);
-      await sleep(300);
+if ($("btn-run-all")) {
+  $("btn-run-all").addEventListener("click", async () => {
+    scenarioRunAbort = false;
+    $("btn-run-all").disabled = true;
+    if ($("btn-stop-all")) $("btn-stop-all").disabled = false;
+    if ($("scenario-progress-wrapper")) $("scenario-progress-wrapper").style.display = "block";
+    const fill = $("scenario-progress-fill"); const text = $("scenario-progress-text");
+    let pass = 0, fail = 0;
+    for (let i = 0; i < SCENARIOS.length; i++) {
+      if (scenarioRunAbort) break;
+      const s = SCENARIOS[i];
+      const res = await runScenario(s);
+      if (res.ok) pass++; else fail++;
+      const pct = ((i + 1) / SCENARIOS.length) * 100;
+      if (fill) fill.style.width = pct + "%";
+      if (text) text.textContent = `${i + 1}/${SCENARIOS.length} · ${pass} passed · ${fail} failed`;
+      await sleep(250);
     }
-    log("run-all complete.");
+    $("btn-run-all").disabled = false;
+    if ($("btn-stop-all")) $("btn-stop-all").disabled = true;
+    if (text) text.textContent += " · done";
+    log("run-all complete: " + pass + " passed, " + fail + " failed");
+    toast("Run All complete", `${pass} passed · ${fail} failed`, fail > 0 ? "warn" : "success");
+  });
+}
+if ($("btn-stop-all")) {
+  $("btn-stop-all").addEventListener("click", () => {
+    scenarioRunAbort = true;
+    $("btn-stop-all").disabled = true;
   });
 }
 
-renderScenarios();
-injectRunAll();
+// ============================================================
+// Reset (gated for prod + type-to-confirm)
+// ============================================================
+if ($("btn-reset")) {
+  $("btn-reset").addEventListener("click", () => {
+    if (isProductionEnv()) { toast("Reset disabled", "Switch to localhost first.", "warn"); return; }
+    if ($("reset-env-line")) $("reset-env-line").innerHTML = `Target: <code>${escapeHtml(effectiveBaseURL() || "(same-origin)")}</code>`;
+    if ($("reset-confirm-input")) $("reset-confirm-input").value = "";
+    if ($("reset-confirm")) $("reset-confirm").disabled = true;
+    if ($("reset-modal")) $("reset-modal").classList.add("open");
+    setTimeout(()=> $("reset-confirm-input")?.focus(), 50);
+  });
+}
+if ($("reset-confirm-input")) {
+  $("reset-confirm-input").addEventListener("input", (e) => {
+    if ($("reset-confirm")) $("reset-confirm").disabled = e.target.value !== "RESET";
+  });
+}
+if ($("reset-confirm")) {
+  $("reset-confirm").addEventListener("click", async () => {
+    try {
+      const r = await api("/dev/reset", { method: "POST" });
+      $("reset-modal").classList.remove("open");
+      currentOrderId = null; currentRzpOrderId = null; currentPaymentId = null;
+      Object.keys(SCENARIO_RESULTS).forEach(k => delete SCENARIO_RESULTS[k]);
+      try { sessionStorage.clear(); } catch (e) {}
+      await manualRefresh();
+      renderScenarios();
+      toast("Reset complete", "DB wiped, queues purged.", "success");
+      log("reset. queues_purged=" + JSON.stringify(r.queues_purged), "pass");
+    } catch (e) {
+      toast("Reset failed", e.message, "error", 0);
+      log("reset failed: " + e.message, "error");
+    }
+  });
+}
 
-// ------- snapshot for chat hand-off -------
-
+// ============================================================
+// Snapshot
+// ============================================================
 async function buildSnapshot() {
   const lines = [];
   lines.push("=== RAZORPAY DASHBOARD SNAPSHOT ===");
   lines.push("captured_at: " + new Date().toISOString());
-  lines.push("tenant: local-dev");
+  lines.push("environment: " + (effectiveBaseURL() || "(same-origin)"));
+  lines.push("tenant: " + ($("tenant-id").textContent || "?"));
   lines.push("");
-
   try {
     const q = await api("/dev/queues");
     lines.push("--- SQS queue depths ---");
-    Object.entries(q.queues).forEach(([n, v]) => {
+    Object.entries(q.queues || {}).forEach(([n, v]) => {
       lines.push(`  ${n}: visible=${v.visible ?? "?"} inflight=${v.inflight ?? "?"}`);
     });
     lines.push("");
   } catch (e) { lines.push("queues fetch failed: " + e.message); }
-
-  try {
-    const list = await api("/dev/flow");
-    lines.push("--- Recent orders (last " + list.orders.length + ") ---");
-    list.orders.forEach(o => {
-      lines.push(`  ${o.status.padEnd(10)} ${o.razorpay_order_id || o.id} receipt=${o.receipt}`);
-    });
-    lines.push("");
-  } catch (e) { lines.push("recent orders fetch failed: " + e.message); }
-
   if (currentOrderId) {
     try {
       const f = await api("/dev/flow/" + currentOrderId);
@@ -1261,44 +2359,222 @@ async function buildSnapshot() {
       lines.push("--- webhook_events (" + f.webhook_events.length + ") ---");
       f.webhook_events.forEach(e => {
         lines.push(`[${e.received_at}] ${e.event} status=${e.processing_status} event_id=${e.event_id}`);
-        lines.push(`  correlation_id: ${e.correlation_id || "—"}`);
       });
       lines.push("");
       lines.push("--- payments (" + f.payments.length + ") ---");
       f.payments.forEach(p => {
-        lines.push(`${p.razorpay_payment_id} status=${p.status} amount=${p.amount} authoritative=${p.is_authoritative} attempt=${p.attempt_number}`);
-      });
-      lines.push("");
-      lines.push("--- refunds (" + f.refunds.length + ") ---");
-      f.refunds.forEach(p => {
-        lines.push(`${p.razorpay_refund_id} status=${p.status} amount=${p.amount}`);
+        lines.push(`${p.razorpay_payment_id} status=${p.status} amount=${p.amount} authoritative=${p.is_authoritative}`);
       });
     } catch (e) { lines.push("flow fetch failed: " + e.message); }
   } else {
-    lines.push("(no order selected — pick one from Recent orders to get full detail)");
+    lines.push("(no order selected)");
   }
-
   lines.push("");
   lines.push("--- Activity log (newest first) ---");
   lines.push(logEl.value || "(empty)");
-
   return lines.join("\n");
 }
+if ($("btn-snapshot")) {
+  $("btn-snapshot").addEventListener("click", async () => {
+    const text = await buildSnapshot();
+    if ($("snapshot")) { $("snapshot").value = text; $("snapshot").classList.add("visible"); }
+    try {
+      await navigator.clipboard.writeText(text);
+      if ($("snapshot-feedback")) $("snapshot-feedback").textContent = "✓ Copied (" + text.length + " chars)";
+      toast("Snapshot copied", text.length + " chars", "success");
+    } catch (e) {
+      if ($("snapshot-feedback")) $("snapshot-feedback").textContent = "select below and copy";
+    }
+    setTimeout(()=> { if ($("snapshot-feedback")) $("snapshot-feedback").textContent = ""; }, 4000);
+  });
+}
 
-$("btn-snapshot").addEventListener("click", async () => {
-  const text = await buildSnapshot();
-  $("snapshot").value = text;
-  try {
-    await navigator.clipboard.writeText(text);
-    $("snapshot-feedback").textContent = "✓ copied to clipboard (" + text.length + " chars)";
-  } catch (e) {
-    $("snapshot-feedback").textContent = "select the box and copy manually";
+// ============================================================
+// Keyboard shortcuts
+// ============================================================
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    $("order-search")?.focus();
+    $("order-search")?.select();
+    return;
   }
-  setTimeout(() => $("snapshot-feedback").textContent = "", 4000);
+  if (e.key === "Escape") {
+    document.querySelectorAll(".modal-backdrop.open").forEach(m => m.classList.remove("open"));
+    if (document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+      if (currentOrderId) {
+        currentOrderId = null; currentRzpOrderId = null;
+        renderRecentOrders(); renderSearchResults();
+        refreshFlow();
+      }
+    }
+    return;
+  }
+  if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey
+      && document.activeElement?.tagName !== "INPUT"
+      && document.activeElement?.tagName !== "TEXTAREA") {
+    manualRefresh();
+  }
 });
 
-refresh();
-setInterval(refresh, 1500);
+// ============================================================
+// KPI filters + alarm banner + main refresh()
+// ============================================================
+const KPI_FILTERS = [
+  // "All today" replaces the noisier "Paid today" tile. Total daily volume
+  // is more useful for orientation; the transient paid-but-not-fulfilled
+  // count is captured by `stuck_paid` for the cases that actually matter.
+  { id: "total_today",     label: "all today",
+    fn: k => k.today_total ?? 0,
+    kindFn: () => "",
+    params: { today_only: "true" } },
+  { id: "fulfilled_today", label: "fulfilled today",
+    fn: k => k.today_fulfilled ?? 0,
+    kindFn: k => (k.today_fulfilled > 0) ? "good" : "",
+    params: { status_in: "fulfilled", today_only: "true" } },
+  { id: "failed_today",    label: "failed today",
+    fn: k => (k.today_failed || 0) + (k.today_fulfillment_failed || 0),
+    kindFn: k => ((k.today_failed || 0) + (k.today_fulfillment_failed || 0)) > 0 ? "warn" : "",
+    params: { status_in: "failed,fulfillment_failed", today_only: "true" } },
+  { id: "in_flight",       label: "in-flight",
+    fn: k => k.in_flight ?? 0,
+    kindFn: () => "",
+    params: { status_in: "created,attempted,authorized" } },
+  { id: "refunded_today",  label: "refunded today",
+    fn: k => k.today_refunded ?? 0,
+    kindFn: k => (k.today_refunded || 0) > 0 ? "warn" : "",
+    params: { status_in: "refunded", today_only: "true" } },
+  { id: "stuck_paid",      label: "stuck paid (>15m)",
+    fn: k => k.stuck_paid ?? 0,
+    kindFn: k => (k.stuck_paid || 0) > 0 ? "bad" : "",
+    params: { stuck_paid: "true" } },
+];
+
+function renderKpis(k) {
+  $("kpi-strip").innerHTML = KPI_FILTERS.map(f => {
+    const active = activeKpiFilter === f.id ? "active" : "";
+    return `<div class="kpi clickable ${f.kindFn(k)} ${active}" data-filter="${f.id}">
+      <span class="kpi-filter-x" data-clear="1" title="clear filter">×</span>
+      <div class="label">${f.label}</div>
+      <div class="value">${f.fn(k) ?? "—"}</div>
+    </div>`;
+  }).join("");
+  $("kpi-strip").querySelectorAll(".kpi.clickable").forEach(el => {
+    el.addEventListener("click", (e) => {
+      const filterId = el.getAttribute("data-filter");
+      const clear = e.target.matches("[data-clear='1']");
+      if (clear || activeKpiFilter === filterId) {
+        activeKpiFilter = null;
+      } else {
+        activeKpiFilter = filterId;
+        currentOrderId = null;
+      }
+      manualRefresh();
+    });
+  });
+}
+
+function renderAlarmBanner(kpis, queues) {
+  const issues = [];
+  const dlq1 = queues["webhook-events-dlq.fifo"]?.visible || 0;
+  const dlq2 = queues["fulfillment-dlq.fifo"]?.visible || 0;
+  if (dlq1 > 0) issues.push(`<strong>webhook-events-dlq.fifo</strong>: ${dlq1} message${dlq1!==1?"s":""}`);
+  if (dlq2 > 0) issues.push(`<strong>fulfillment-dlq.fifo</strong>: ${dlq2} message${dlq2!==1?"s":""}`);
+  if ((kpis.stuck_paid || 0) > 0) issues.push(`<strong>${kpis.stuck_paid}</strong> order(s) stuck at paid &gt; 15 minutes`);
+  const banner = $("alarm-banner");
+  if (!banner) return;
+  if (issues.length === 0) { banner.classList.remove("visible"); return; }
+  $("alarm-body").innerHTML = issues.map(i => `<div>· ${i}</div>`).join("");
+  banner.classList.add("visible");
+}
+
+function activeFilterParams() {
+  if (!activeKpiFilter) return {};
+  const f = KPI_FILTERS.find(x => x.id === activeKpiFilter);
+  return f ? f.params : {};
+}
+function activeFilterLabel() {
+  if (!activeKpiFilter) return null;
+  const f = KPI_FILTERS.find(x => x.id === activeKpiFilter);
+  return f ? f.label : null;
+}
+
+async function refresh() {
+  // Aggregated single-call refresh: /dev/dashboard-data returns
+  // kpis + queues + recent orders + (optionally) selected-order detail.
+  const params = new URLSearchParams();
+  if (currentOrderId) params.set("order_id", currentOrderId);
+  if (tenantFilter) params.set("tenant_id", tenantFilter);
+  Object.entries(activeFilterParams()).forEach(([k, v]) => params.set(k, v));
+  const path = "/dev/dashboard-data" + (params.toString() ? "?" + params.toString() : "");
+  try {
+    const data = await api(path);
+    lastDashboardData = data;
+    allOrdersCache = data.orders || [];
+    if ($("tenant-id")) $("tenant-id").textContent = data.tenant_id_default || "?";
+    renderKpis(data.kpis || {});
+    renderAlarmBanner(data.kpis || {}, data.queues || {});
+    renderRecentOrders();
+    renderSearchResults();
+    if (data.selected) {
+      lastFlow = data.selected;
+      currentRzpOrderId = data.selected.order.razorpay_order_id || currentRzpOrderId;
+      renderDetailHeader(data.selected);
+      renderStateGraph(data.selected.order);
+      renderJourney(data.selected);
+      renderDbTables(data.selected);
+    } else {
+      lastFlow = null;
+      renderDetailHeader(null);
+      renderStateGraph(null);
+      renderJourney(null);
+      renderDbTables(null);
+    }
+    healthy = true;
+  } catch (e) {
+    healthy = false;
+    log("dashboard fetch error: " + e.message, "error");
+  }
+  if ($("health-dot")) $("health-dot").classList.toggle("bad", !healthy);
+}
+
+// ============================================================
+// Manual refresh + init
+// ============================================================
+function setRefreshStatus(msg) {
+  const el = $("refresh-status"); if (el) el.textContent = msg;
+}
+async function manualRefresh() {
+  setRefreshStatus("refreshing…");
+  const btn = $("btn-refresh"); if (btn) { btn.disabled = true; btn.classList.add("loading"); }
+  try {
+    await refresh();
+    setRefreshStatus("last refreshed " + new Date().toLocaleTimeString());
+  } catch (e) {
+    setRefreshStatus("refresh failed: " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
+  }
+}
+$("btn-refresh")?.addEventListener("click", manualRefresh);
+
+async function refreshFlow() {
+  // Backwards-compat shim — used by Escape to deselect. Aggregated refresh
+  // happens inside refresh().
+  if (!currentOrderId) {
+    lastFlow = null;
+    renderDetailHeader(null); renderStateGraph(null);
+    renderJourney(null); renderDbTables(null);
+    return;
+  }
+  await fetchSelectedOnly();
+}
+
+(async function init() {
+  updateEnvBadge();
+  renderScenarios();
+  await manualRefresh();
+})();
 </script>
 </body>
 </html>
