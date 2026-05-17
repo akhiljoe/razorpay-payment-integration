@@ -146,6 +146,7 @@ jobs:
           # CKV_AWS_258: Lambda Function URL AuthType NONE - Razorpay HMAC signature is the auth (DESIGN_v6 Section 2.1).
       - name: Upload SARIF
         if: always()
+        continue-on-error: true   # Code Scanning may not be enabled on the repo
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: checkov.sarif
