@@ -3,7 +3,7 @@
 Error or symptom → fix index. For deep incident response, see [`docs/runbooks/`](docs/runbooks/).
 
 Each entry tagged:
-- **Hit** — we encountered this during development; the fix is documented in DESIGN_v5 Section 17.
+- **Hit** — we encountered this during development; the fix is documented in DESIGN_v6 Section 17.
 - **Predicted** — invariant in CLAUDE.md; haven't hit it but it's in the design.
 
 ---
@@ -37,7 +37,7 @@ source .venv/Scripts/activate
 cdk synth
 ```
 
-(DESIGN_v5 not formally captured — Windows-only quirk.)
+(DESIGN_v6 not formally captured — Windows-only quirk.)
 
 ### uvicorn boots but `Application startup failed.` immediately (Hit)
 
@@ -338,7 +338,7 @@ docker push <account>.dkr.ecr.ap-south-1.amazonaws.com/razorpay-webhook-producer
 
 1. **Snapshot the system state.** Dashboard → click "Copy snapshot" → paste somewhere.
 2. **Check the runbook index.** [`docs/runbooks/`](docs/runbooks/) has 5 incident-focused playbooks.
-3. **Read the relevant Section 17 entry** in DESIGN_v5 — we documented every non-obvious bug. 13 entries so far.
+3. **Read the relevant Section 17 entry** in DESIGN_v6 — we documented every non-obvious bug. 13 entries so far.
 4. **`git log --oneline -10`** — the most recent commits often explain why the current code does what it does.
 5. **Reproduce in the dashboard's scenario runner.** If a scenario regresses, an invariant broke.
 
@@ -346,4 +346,4 @@ docker push <account>.dkr.ecr.ap-south-1.amazonaws.com/razorpay-webhook-producer
 
 - [COMMANDS.md](COMMANDS.md) — command reference.
 - [docs/runbooks/](docs/runbooks/) — incident-response deep dives.
-- [designs/DESIGN_v5.md](designs/DESIGN_v5.md) — Section 17 captures every documented learning.
+- [designs/DESIGN_v6.md](../designs/DESIGN_v6.md) — Section 17 captures every documented learning.

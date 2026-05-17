@@ -1,0 +1,30 @@
+# Gitleaks configuration. Extends the default ruleset with Razorpay-specific patterns.
+# Run locally: gitleaks detect --config .gitleaks.toml --verbose
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "razorpay-key-id"
+description = "Razorpay live or test key ID"
+regex = '''rzp_(live|test)_[A-Za-z0-9]{14,}'''
+tags = ["razorpay", "key"]
+
+[[rules]]
+id = "razorpay-webhook-secret-hint"
+description = "Likely Razorpay webhook secret assignment"
+regex = '''(?i)(razorpay[_-]?webhook[_-]?secret|webhook[_-]?secret)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}['"]'''
+tags = ["razorpay", "secret"]
+
+[allowlist]
+description = "Test fixtures and documented placeholder values"
+paths = [
+    '''(.*?)(test|tests|fixtures|example)(/|\\)(.*?)''',
+    '''designs/.*\.md''',
+    '''docs/.*\.md''',
+    '''scripts/razorpay-simulator\.py''',
+]
+regexes = [
+    '''rzp_test_(dummy|placeholder|fake|example|TEST|XXXX)[A-Za-z0-9]*''',
+    '''webhook_secret_(dummy|placeholder|previous|example)''',
+]

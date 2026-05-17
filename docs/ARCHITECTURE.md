@@ -1,6 +1,6 @@
 # Architecture
 
-System overview for the Razorpay payment integration. One-pager. Deeper specifics live in [`designs/DESIGN_v5.md`](designs/DESIGN_v5.md); diagrams in [`docs/diagrams/`](docs/diagrams/).
+System overview for the Razorpay payment integration. One-pager. Deeper specifics live in [`../designs/DESIGN_v6.md`](../designs/DESIGN_v6.md); diagrams in [`./diagrams/`](./diagrams/); AWS deployment plan in [`../designs/MIGRATION_ARCHITECTURE.md`](../designs/MIGRATION_ARCHITECTURE.md).
 
 ## The system in one diagram
 
@@ -73,13 +73,13 @@ flowchart LR
 
 ## The 10 Critical Invariants
 
-Source: [`CLAUDE.md`](CLAUDE.md). Every one is tested and at least one was hard-earned during development (see DESIGN_v5 Section 17).
+Source: [`../CLAUDE.md`](../CLAUDE.md). Every one is tested and at least one was hard-earned during development (see DESIGN_v6 Section 17).
 
 1. **Tenant isolation.** Every query against `orders`, `payments`, `refunds`, `webhook_events`, `order_events` filters by `tenant_id`. The logical FK to `tenants.id` is unconstrained at the DB level for performance; correctness is the application's responsibility.
 2. **Tenant ID source.** Extracted from the URL path parameter. Never from request body, query string, or header.
 3. **Webhook secret lookup.** Verify `X-Razorpay-Signature` against `webhook_secret` first, fall back to `webhook_secret_previous` if set. Both checks use `hmac.compare_digest`. Verification precedes payload deserialization.
 4. **Producer has no DB credentials.** IAM-enforced, test-asserted. The role has explicit `Deny` on `rds:*` and on the DB secret ARN.
-5. **Event-type-aware primary idempotency.** Inside the consumer's DB transaction, after `SELECT ... FOR UPDATE`, check whether the event's target state has already been reached. Rules per event type live in DESIGN_v5 Section 2.1 step 10.
+5. **Event-type-aware primary idempotency.** Inside the consumer's DB transaction, after `SELECT ... FOR UPDATE`, check whether the event's target state has already been reached. Rules per event type live in DESIGN_v6 Section 2.1 step 10.
 6. **State transition ordering.** Acquire `SELECT ... FOR UPDATE` before any state change. Assert `event_amount == order.amount` on capture and authorize events.
 7. **Order creation sequence.** Insert local `orders` row with `status=initializing` before calling Razorpay. Razorpay is never ahead of the DB.
 8. **DB commit before side effects.** The consumer's DB transaction commits before any `fulfillment-queue.fifo` publish, log, or external call.
@@ -101,9 +101,9 @@ fulfillment_failed → fulfilled | refunded
 
 Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` on `paid`/`fulfilled`/`fulfillment_failed` is a no-op (`STALE_NO_OP`).
 
-Two **auto-hops** in `handle_payment_authorized` and `handle_payment_captured` cover the case where a webhook arrives on a `created` order (server-to-server flow or verify-callback-less integration): the consumer inserts the missing `created → attempted` transition silently with `metadata.auto_attempted=true`. See DESIGN_v5 Section 17 + `webhook_handlers.py`.
+Two **auto-hops** in `handle_payment_authorized` and `handle_payment_captured` cover the case where a webhook arrives on a `created` order (server-to-server flow or verify-callback-less integration): the consumer inserts the missing `created → attempted` transition silently with `metadata.auto_attempted=true`. See DESIGN_v6 Section 17 + `webhook_handlers.py`.
 
-Full transition table: DESIGN_v5 Section 4 and the `payment-state-machine` skill. Visual: [`docs/diagrams/state-machine.md`](docs/diagrams/state-machine.md).
+Full transition table: DESIGN_v6 Section 4 and the `payment-state-machine` skill. Visual: [`./diagrams/state-machine.md`](./diagrams/state-machine.md).
 
 ## Webhook event routing
 
@@ -149,8 +149,8 @@ Full command reference: [`COMMANDS.md`](COMMANDS.md).
 
 ## Related
 
-- [`docs/diagrams/`](docs/diagrams/) — visual references (system, sequence, state, deployment).
-- [`docs/runbooks/`](docs/runbooks/) — operator playbooks per incident type.
-- [`docs/cloud/`](docs/cloud/) — AWS account setup, IAM patterns, cost controls.
-- [`designs/DESIGN_v5.md`](designs/DESIGN_v5.md) — formal spec. Section 17 captures hard-won lessons learned.
+- [`./diagrams/`](./diagrams/) — visual references (system, sequence, state, deployment).
+- [`./runbooks/`](./runbooks/) — operator playbooks per incident type.
+- [`./cloud/`](./cloud/) — AWS account setup, IAM patterns, cost controls.
+- [`../designs/DESIGN_v6.md`](../designs/DESIGN_v6.md) — formal spec. Section 17 captures hard-won lessons learned.
 - [`.claude/rules/`](.claude/rules/) — invariant-enforcing rules consumed by AI agents working on this repo.

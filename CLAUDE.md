@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Razorpay payment integration module. Embeddable across multiple websites via a FastAPI router (Python) and an npm widget (TypeScript). Local-first development. Source of truth: `designs/DESIGN_v5.md`.
+Razorpay payment integration module. Embeddable across multiple websites via a FastAPI router (Python) and an npm widget (TypeScript). Local-first development. Source of truth: `designs/DESIGN_v6.md`.
 
 ## Build, Test, Lint Commands
 
@@ -47,7 +47,7 @@ DB: PostgreSQL. Tables: `tenants`, `orders`, `payments`, `refunds`, `webhook_eve
 2. **Tenant ID source**: `tenant_id` is extracted from the URL path parameter on the webhook route. It must never come from the request body, query string, or header.
 3. **Webhook secret lookup**: Verify `X-Razorpay-Signature` against the tenant-specific `webhook_secret` first, fall back to `webhook_secret_previous` if set. Both checks use `hmac.compare_digest`. Verification precedes payload deserialization. Runs in the **Webhook Producer**.
 4. **Producer has no DB credentials**: The Webhook Producer holds IAM permission only for `webhook-events.fifo:SendMessage` and the per-tenant secret read. Any DB access from the producer module is a bug.
-5. **Primary idempotency guard (event-type aware)**: Inside the Consumer's DB transaction, after `SELECT ... FOR UPDATE` on the order, check whether the event's target state has already been reached. Rules per event type are in DESIGN_v5 Section 2.1 step 10 and the webhook-idempotency rule. `event_id ON CONFLICT DO NOTHING` is the secondary fast-path.
+5. **Primary idempotency guard (event-type aware)**: Inside the Consumer's DB transaction, after `SELECT ... FOR UPDATE` on the order, check whether the event's target state has already been reached. Rules per event type are in DESIGN_v6 Section 2.1 step 10 and the webhook-idempotency rule. `event_id ON CONFLICT DO NOTHING` is the secondary fast-path.
 6. **State transition ordering**: Acquire `SELECT ... FOR UPDATE` on `orders` before any state change. Assert `event_amount == order.amount` on capture and authorize events.
 7. **Order creation sequence**: INSERT local `orders` row with `status=initializing` before calling Razorpay. Razorpay is never ahead of the DB.
 8. **DB commit before side effects**: The Consumer's DB transaction commits before any `fulfillment-queue.fifo` publish, log, or external call.
@@ -60,7 +60,7 @@ DB: PostgreSQL. Tables: `tenants`, `orders`, `payments`, `refunds`, `webhook_eve
 
 Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` on `paid`, `fulfilled`, or `fulfillment_failed` is a no-op (mark event `done`).
 
-`fulfillment_failed` is distinct from `failed` so payment-side failures and delivery-side failures are not conflated. Full transition table: DESIGN_v5 Section 4 and the `payment-state-machine` skill.
+`fulfillment_failed` is distinct from `failed` so payment-side failures and delivery-side failures are not conflated. Full transition table: DESIGN_v6 Section 4 and the `payment-state-machine` skill.
 
 ## Webhook Event Routing
 
@@ -79,7 +79,7 @@ Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` o
 - **OpenTelemetry**: exporter selected at startup via `OTEL_EXPORTER` env var (`stdout` | `xray` | `otlp`). No application branching on the exporter.
 - `payments.is_authoritative=TRUE` only on `payment.captured`. Reconciliation queries authoritative payments only.
 - Admin routes require `X-Admin-Api-Key` matching `RazorpayConfig.admin_api_key`. If `None`, the route returns `403`.
-- **Dashboards** (see DESIGN 17.14 / 17.15 + PHASES.md Phase 17):
+- **Dashboards** (see DESIGN 17.14 / 17.15 + docs/PHASES.md Phase 17):
   - `/dev/dashboard` (full Mission Control, write-capable scenario harness) is gated on `RAZORPAY_DEV_ROUTES_ENABLED=true`. Must be unset in any deployed environment.
   - `/admin/dashboard` (read-only) is gated on `X-Admin-Api-Key`. The frontend stores the key in `sessionStorage`, never `localStorage`.
   - State-graph visited detection in both dashboards reads `*_at` timestamps from the order row, never the live `status` string — otherwise terminal-on-branch orders (`failed`, `refunded`) render their prior lanes grey.
@@ -96,8 +96,8 @@ Any other edge raises `IllegalTransitionError`. Special case: `payment.failed` o
 
 ## Token Management & Context Protocol
 
-- Do not ingest or process `designs/DESIGN_v5.md` for routine tasks (debugging, linting, or documentation).
-- Only reference `designs/DESIGN_v5.md` when the task explicitly requires modifying the state machine, altering the database schema, or changing the core webhook architecture.
+- Do not ingest or process `designs/DESIGN_v6.md` for routine tasks (debugging, linting, or documentation).
+- Only reference `designs/DESIGN_v6.md` when the task explicitly requires modifying the state machine, altering the database schema, or changing the core webhook architecture.
 - For all other tasks, the **Critical Invariants**, **Architecture**, **State Machine**, and **Webhook Event Routing** sections of this `CLAUDE.md` (plus the `.claude/rules/` files) are the sufficient source of truth.
 - When providing code, prioritize functional logic over boilerplate unless a full rewrite is requested, to minimize output token costs.
 

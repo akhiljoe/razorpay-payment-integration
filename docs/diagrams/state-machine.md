@@ -55,4 +55,4 @@ The reconciliation query filters on `NON_TERMINAL` to find work needing attentio
 - [system-architecture.md](system-architecture.md) — where transitions happen.
 - [webhook-flow.md](webhook-flow.md) — sequence diagram of one transition.
 - [ARCHITECTURE.md](../../ARCHITECTURE.md#state-machine) — text version.
-- [DESIGN_v5.md Section 4](../../designs/DESIGN_v5.md) — formal spec.
+- [DESIGN_v6.md Section 4](../../designs/DESIGN_v6.md) — formal spec.

@@ -1,21 +1,27 @@
 # Documentation index
 
-Everything under `docs/` plus pointers to top-level files.
+Everything under `docs/` plus pointers to the design folder and the repo root.
 
 ## By question
 
 | I want to | Read |
 |---|---|
-| Run the system locally for the first time | [QUICKSTART.md](../QUICKSTART.md) |
-| Look up "how do I do X right now" | [COMMANDS.md](../COMMANDS.md) |
-| Debug an error or unexpected behavior | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) |
-| Understand the architecture in 10 minutes | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| Run the system locally for the first time | [QUICKSTART.md](QUICKSTART.md) |
+| Look up "how do I do X right now" | [COMMANDS.md](COMMANDS.md) |
+| Debug an error or unexpected behavior | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| Understand the architecture in 10 minutes | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | See a picture instead of prose | [diagrams/](diagrams/) |
-| Read the formal design spec | [designs/DESIGN_v5.md](../designs/DESIGN_v5.md) |
+| Read the formal design spec | [../designs/DESIGN_v6.md](../designs/DESIGN_v6.md) |
 | Respond to an incident as on-call | [runbooks/](runbooks/) |
-| Deploy to AWS | [cloud/](cloud/) |
-| Know what each phase shipped + why | [PHASES.md](../PHASES.md) |
-| Work on the codebase as an AI agent | [CLAUDE.md](../CLAUDE.md) and [.claude/rules/](../.claude/rules/) |
+| Deploy to AWS (plan + rationale) | [../designs/MIGRATION_WRITEUP.md](../designs/MIGRATION_WRITEUP.md) |
+| Deploy to AWS (prescriptive blueprint) | [../designs/MIGRATION_ARCHITECTURE.md](../designs/MIGRATION_ARCHITECTURE.md) |
+| Estimate the monthly AWS bill | [cost-analysis.md](cost-analysis.md) |
+| Wire CI safety nets and dependency automation | [devops-tooling-setup.md](devops-tooling-setup.md) |
+| Know what each phase shipped + why | [PHASES.md](PHASES.md) |
+| Walk through the forward-looking phase plan | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
+| Plan a prod cutover | [PROD_MIGRATION.md](PROD_MIGRATION.md) |
+| Look up the test matrix | [TEST_PLAN.md](TEST_PLAN.md) |
+| Work on the codebase as an AI agent | [../CLAUDE.md](../CLAUDE.md) and [../.claude/rules/](../.claude/rules/) |
 
 ## By directory
 
@@ -26,11 +32,11 @@ Mermaid diagrams. All render on GitHub directly.
 - [system-architecture.md](diagrams/system-architecture.md) — components, queues, DB
 - [webhook-flow.md](diagrams/webhook-flow.md) — sequence diagram of one event
 - [state-machine.md](diagrams/state-machine.md) — order status transitions
-- [deployment-topology.md](diagrams/deployment-topology.md) — AWS resources (Phase 17+)
+- [deployment-topology.md](diagrams/deployment-topology.md) — AWS resources
 
 ### `docs/runbooks/`
 
-Incident response playbooks. Each has Symptom → Detect → Diagnose → Resolve → Prevent.
+Incident response playbooks. Each has Symptom -> Detect -> Diagnose -> Resolve -> Prevent.
 
 - [README.md](runbooks/README.md) — index
 - [incident-checklist.md](runbooks/incident-checklist.md) — generic on-call response
@@ -41,7 +47,7 @@ Incident response playbooks. Each has Symptom → Detect → Diagnose → Resolv
 
 ### `docs/cloud/`
 
-AWS deploy prerequisites.
+AWS deploy prerequisites and reference patterns.
 
 - [README.md](cloud/README.md) — index + decision tree
 - [account-setup.md](cloud/account-setup.md) — one-time AWS account bootstrap
@@ -51,33 +57,39 @@ AWS deploy prerequisites.
 ## Top-level files (in repo root)
 
 - [README.md](../README.md) — project landing page
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — system overview + critical invariants
-- [QUICKSTART.md](../QUICKSTART.md) — clone-to-running in 10 minutes
-- [COMMANDS.md](../COMMANDS.md) — every useful command
-- [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) — symptom-indexed fixes
-- [PHASES.md](../PHASES.md) — what shipped in each phase and why
 - [CLAUDE.md](../CLAUDE.md) — rules for AI agents working on the codebase
-- [IMPLEMENTATION_PLAN_V2.md](../IMPLEMENTATION_PLAN_V2.md) — forward-looking phase plan
-- [designs/DESIGN_v5.md](../designs/DESIGN_v5.md) — formal spec with Section 17 learnings
+- [docker-compose.yml](../docker-compose.yml) — local Postgres + LocalStack
+- [.pre-commit-config.yaml](../.pre-commit-config.yaml) — local hooks
+- [renovate.json](../renovate.json) — dependency update automation
+
+## The `designs/` folder
+
+Source-of-truth design docs and the AWS migration plan. See [`../designs/README.md`](../designs/README.md).
 
 ## Suggested reading order
 
 **Day 1 (orientation):**
 
-1. README.md
-2. ARCHITECTURE.md
-3. QUICKSTART.md — run the system locally
+1. [../README.md](../README.md)
+2. [ARCHITECTURE.md](ARCHITECTURE.md)
+3. [QUICKSTART.md](QUICKSTART.md) — run the system locally
 
 **Day 2 (deeper):**
 
-4. PHASES.md
-5. One runbook of your choice from `docs/runbooks/`
-6. DESIGN_v5.md Section 17 (the lessons learned)
+4. [PHASES.md](PHASES.md)
+5. One runbook of your choice from [runbooks/](runbooks/)
+6. [../designs/DESIGN_v6.md](../designs/DESIGN_v6.md) Section 17 (the lessons learned)
+
+**When planning AWS deploy:**
+
+7. [../designs/MIGRATION_WRITEUP.md](../designs/MIGRATION_WRITEUP.md) (the why)
+8. [../designs/MIGRATION_ARCHITECTURE.md](../designs/MIGRATION_ARCHITECTURE.md) (the what)
+9. [cost-analysis.md](cost-analysis.md) (the bill)
 
 **Whenever needed:**
 
-- COMMANDS.md (bookmark this)
-- TROUBLESHOOTING.md (bookmark this too)
+- [COMMANDS.md](COMMANDS.md) (bookmark this)
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (bookmark this too)
 
 ## Cross-reference style
 

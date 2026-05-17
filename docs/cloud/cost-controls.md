@@ -43,9 +43,9 @@ Notifications go to:
 Move to Paid Track / RDS-in-VPC when **any** of these are true:
 
 - **Volume:** sustained > 5k payment events / day for two consecutive weeks. Free Track Lambda + Neon serverless DB stops keeping up.
-- **Compliance:** an auditor or contract requires PCI DSS / ISO 27001 controls that the Free Track posture can't satisfy. The most common trigger is "data must be in a private subnet". CLAUDE.md and DESIGN_v5 Section 7 cover this gate.
+- **Compliance:** an auditor or contract requires PCI DSS / ISO 27001 controls that the Free Track posture can't satisfy. The most common trigger is "data must be in a private subnet". CLAUDE.md and DESIGN_v6 Section 7 cover this gate.
 - **Cost crossover:** monthly AWS bill exceeds $80 reliably (mostly logs + Lambda). At that point, RDS reserved instance economics start beating Neon serverless.
-- **Latency:** cold starts on the consumer cross 2s p99. Move to provisioned concurrency, which requires per-Lambda config changes documented in Section 16 of DESIGN_v5.
+- **Latency:** cold starts on the consumer cross 2s p99. Move to provisioned concurrency, which requires per-Lambda config changes documented in Section 16 of DESIGN_v6.
 
 When you flip the switch, the CDK side is a context change:
 
@@ -112,4 +112,4 @@ Don't `cdk destroy` in a panic — that risks data loss. The reserved-concurrenc
 
 - [`account-setup.md`](account-setup.md) — manual budget setup as safety net.
 - [`incident-checklist.md`](../runbooks/incident-checklist.md) — full incident response.
-- DESIGN_v5 Section 7 — Free Track vs Paid Track architecture.
+- DESIGN_v6 Section 7 — Free Track vs Paid Track architecture.

@@ -20,28 +20,29 @@ A production-grade Razorpay payment integration shipped as a Python library plus
 | `example/backend/` | FastAPI dev backend wiring the whole flow + a 17-step Payment Journey dashboard + a buyer-perspective storefront |
 | `scripts/` | Operator CLIs: `local-fixtures`, `local-pump`, `razorpay-simulator`, `dlq-replay` |
 | `infra/` | AWS CDK Python (FoundationStack + PaymentsStack) for cloud deploy |
-| `docs/` | Runbooks, cloud onboarding, diagrams |
-| `designs/DESIGN_v5.md` | Formal design document, source of truth |
+| `docs/` | All operational and planning docs (runbooks, cloud onboarding, diagrams, architecture overview, quickstart, commands, troubleshooting, test/scale/prod-migration plans, phase history, cost analysis, devops tooling setup) |
+| `designs/` | Formal design + AWS migration architecture + IAM policies. Source of truth lives here. |
 
 ## Where to start, by role
 
 | You are | Read |
 |---|---|
-| New developer running locally | [QUICKSTART.md](QUICKSTART.md) |
-| Looking up "how do I X" | [COMMANDS.md](COMMANDS.md) |
-| Debugging a failure | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
-| Wanting the system overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| New developer running locally | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
+| Looking up "how do I X" | [docs/COMMANDS.md](docs/COMMANDS.md) |
+| Debugging a failure | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
+| Wanting the system overview | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | On-call, something broke | [docs/runbooks/](docs/runbooks/) |
-| Preparing to deploy to AWS | [docs/cloud/](docs/cloud/) |
-| Reading the formal spec | [designs/DESIGN_v5.md](designs/DESIGN_v5.md) |
-| Trying to understand past decisions | [PHASES.md](PHASES.md) + `git log` |
+| Preparing to deploy to AWS | [designs/MIGRATION_WRITEUP.md](designs/MIGRATION_WRITEUP.md) and [designs/MIGRATION_ARCHITECTURE.md](designs/MIGRATION_ARCHITECTURE.md) |
+| Reading the formal spec | [designs/DESIGN_v6.md](designs/DESIGN_v6.md) |
+| Trying to understand past decisions | [docs/PHASES.md](docs/PHASES.md) + `git log` |
+| Estimating monthly AWS spend | [docs/cost-analysis.md](docs/cost-analysis.md) |
 | AI agent working on the codebase | [CLAUDE.md](CLAUDE.md) |
 
 ## Architecture in one sentence
 
 A FastAPI router receives Razorpay webhooks, fast-verifies HMAC signatures **without any database access**, publishes onto an SQS FIFO queue; a separate consumer Lambda drains the queue, applies an event-type-aware idempotency guard inside a `SELECT ... FOR UPDATE` transaction, advances the order's state machine, and publishes to a second SQS FIFO queue; a fulfillment Lambda drains that, invokes the host's `FulfillmentHook`, and transitions to terminal status.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full diagram and the 10 Critical Invariants that make this safe.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full diagram and the 10 Critical Invariants that make this safe.
 
 ## Run it locally
 
@@ -70,7 +71,7 @@ default). The admin dashboard is gated on `X-Admin-Api-Key` matching
 `RAZORPAY_ADMIN_API_KEY`. Both are safe to expose in different
 environments: dev locally, admin behind a per-operator proxy.
 
-Full step-by-step in [QUICKSTART.md](QUICKSTART.md).
+Full step-by-step in [docs/QUICKSTART.md](docs/QUICKSTART.md).
 
 ## Key invariants (the load-bearing ones)
 
@@ -80,7 +81,7 @@ Full step-by-step in [QUICKSTART.md](QUICKSTART.md).
 4. **DB commit before any side effect.** SQS publishes, logs, external calls all happen after the consumer's transaction commits.
 5. **Correlation IDs propagate end to end** across the Producer → SQS → Consumer → SQS → Fulfillment hops via MessageAttributes.
 
-Full list in [ARCHITECTURE.md](ARCHITECTURE.md). Each invariant has at least one test asserting it.
+Full list in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Each invariant has at least one test asserting it.
 
 ## How to evaluate quickly
 
@@ -91,9 +92,9 @@ If you have 5 minutes:
 
 If you have 30 minutes:
 
-1. Read [ARCHITECTURE.md](ARCHITECTURE.md).
+1. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 2. Read one runbook of your choice from `docs/runbooks/`.
-3. Skim DESIGN_v5 Section 17 (the lessons learned).
+3. Skim [designs/DESIGN_v6.md](designs/DESIGN_v6.md) Section 17 (the lessons learned).
 
 ## License + status
 

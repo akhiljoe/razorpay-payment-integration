@@ -1,6 +1,6 @@
 # Razorpay Payment Integration: Phased Implementation Plan (V2)
 
-Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. Every step is atomic. Every phase gates on local verification and ends in a committed checkpoint.
+Source of truth: `designs/DESIGN_v6.md`. Phases are ordered by hard dependency. Every step is atomic. Every phase gates on local verification and ends in a committed checkpoint.
 
 **Standing constraints** (apply to every step below):
 
@@ -14,7 +14,7 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 ## Phase: Repository Scaffolding and Logging Foundation
 
 - [ ] **What:** Initialize the git repository and create the directory tree from DESIGN Section 1.
-  **Output:** `razorpay_checkout/`, `packages/checkout-widget/`, `example/{backend,frontend}/`, `infra/stacks/`, `scripts/`, `designs/` directories present; `.gitignore` covering `__pycache__/`, `.venv/`, `node_modules/`, `dist/`, `.env`, `cdk.out/`, `.pytest_cache/`, `localstack-volume/`; initial `README.md` linking to `designs/DESIGN_v5.md`.
+  **Output:** `razorpay_checkout/`, `packages/checkout-widget/`, `example/{backend,frontend}/`, `infra/stacks/`, `scripts/`, `designs/` directories present; `.gitignore` covering `__pycache__/`, `.venv/`, `node_modules/`, `dist/`, `.env`, `cdk.out/`, `.pytest_cache/`, `localstack-volume/`; initial `README.md` linking to `designs/DESIGN_v6.md`.
 
 - [ ] **What:** Create the Python package manifest with pinned runtime and dev dependencies.
   **Output:** `razorpay_checkout/pyproject.toml` declaring `fastapi`, `pydantic`, `pydantic-settings`, `asyncpg`, `httpx`, `structlog`, `opentelemetry-*`, `mangum`, `alembic`, `boto3`, plus dev deps `pytest`, `pytest-asyncio`, `pytest-cov`, `respx`, `ruff`, `mypy`; `uv sync` resolves cleanly producing `uv.lock`.
@@ -95,7 +95,7 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 > Depends on: core config.
 
 - [ ] **What:** Define the `OrderStatus` enum and the 15-edge transition table from DESIGN Section 4.
-  **Output:** `razorpay_checkout/razorpay_checkout/state_machine.py` with `ALLOWED_TRANSITIONS` of length 15 (15 explicit edges in DESIGN_v5 Section 4's transition table); `tests/test_state_machine.py` asserts inclusion and exclusion samples and that only `refunded` is lifecycle-terminal (zero outgoing edges).
+  **Output:** `razorpay_checkout/razorpay_checkout/state_machine.py` with `ALLOWED_TRANSITIONS` of length 15 (15 explicit edges in DESIGN_v6 Section 4's transition table); `tests/test_state_machine.py` asserts inclusion and exclusion samples and that only `refunded` is lifecycle-terminal (zero outgoing edges).
 
 - [ ] **What:** Implement `IllegalTransitionError` and `assert_transition`.
   **Output:** Same module; parametrized test enumerates every legal and illegal edge.
@@ -506,7 +506,7 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
 - `dashboard.html` "Run all scenarios in sequence" → 11/11 PASS.
 - Manual: visit `/admin/dashboard` with no key → modal opens; with
   wrong key → 403 toast; with right key → data loads.
-- DESIGN_v5 Section 17.14 + 17.15 entries present.
+- DESIGN_v6 Section 17.14 + 17.15 entries present.
 - `RAZORPAY_DEV_ROUTES_ENABLED=false` exists in `.env.example` with a
   comment warning prod operators.
 
@@ -522,7 +522,7 @@ Source of truth: `designs/DESIGN_v5.md`. Phases are ordered by hard dependency. 
   **Output:** `TEST_PLAN.md` lists Unit, Integration, and Chaos sections; no row is marked TBD.
 
 - [ ] **What:** Author `SCALE_PLAN.md` capturing every deferred item from DESIGN Section 16 plus the Section 7 SQS upgrade triggers and the Section 9 Fargate trigger.
-  **Output:** `SCALE_PLAN.md` table with rows for transactional outbox, scheduled reconciliation, constant-time webhook responses, manual capture admin endpoint, automated capture retry, refund UI and initiation API, partial refunds, subscriptions, multi-currency, partial captures, 3DS edge cases, payment link generation, UPI QR, EMI, international methods, API versioning, SQS Standard + SNS fan-out, `Idempotency-Key` header, vendor-agnostic schema naming, plus the architectural scaling triggers; each row carries the exact promotion trigger from DESIGN_v5.md.
+  **Output:** `SCALE_PLAN.md` table with rows for transactional outbox, scheduled reconciliation, constant-time webhook responses, manual capture admin endpoint, automated capture retry, refund UI and initiation API, partial refunds, subscriptions, multi-currency, partial captures, 3DS edge cases, payment link generation, UPI QR, EMI, international methods, API versioning, SQS Standard + SNS fan-out, `Idempotency-Key` header, vendor-agnostic schema naming, plus the architectural scaling triggers; each row carries the exact promotion trigger from DESIGN_v6.md.
 
 **Phase gate.** Both planning documents complete; CI green on the deployed branch.
 **Commit:** `git commit -m "docs: test_plan and scale_plan with deferral promotion triggers"`

@@ -131,4 +131,4 @@ Tools you can reach for without code changes:
 - `dlq-drain.md`
 - `stuck-paid-order.md`
 - `webhook-secret-rotation.md`
-- DESIGN_v5 Section 6 — failure modes by component.
+- DESIGN_v6 Section 6 — failure modes by component.

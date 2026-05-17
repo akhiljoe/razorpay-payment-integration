@@ -9,7 +9,7 @@ All commands assume:
 
 ## Shell hygiene (run at the start of any new terminal)
 
-Stale `RAZORPAY_*` exports silently override `.env` (DESIGN_v5 Section 17.10). Always reset.
+Stale `RAZORPAY_*` exports silently override `.env` (DESIGN_v6 Section 17.10). Always reset.
 
 ```bash
 for v in $(env | grep -E '^RAZORPAY_' | cut -d= -f1); do unset "$v"; done

@@ -128,5 +128,5 @@ Razorpay will retry any in-flight webhooks signed during the bad window; they'll
 
 ## Related
 
-- DESIGN_v5 Section 8 — signature verification path.
+- DESIGN_v6 Section 8 — signature verification path.
 - `tenant-onboarding.md` for the initial secret setup.

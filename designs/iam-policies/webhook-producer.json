@@ -1,0 +1,92 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowReadTenantRazorpayCredsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/tenant/*/razorpay-*"
+    },
+    {
+      "Sid": "DenyDbCredentials",
+      "Effect": "Deny",
+      "Action": "secretsmanager:*",
+      "Resource": [
+        "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/db/credentials-*",
+        "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/db/credentials-readonly-*"
+      ]
+    },
+    {
+      "Sid": "AllowDecryptSecretsAndSqsCmksOnly",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": [
+        "arn:aws:kms:ap-south-1:${AWS::AccountId}:key/${SecretsCmkId}",
+        "arn:aws:kms:ap-south-1:${AWS::AccountId}:key/${SqsCmkId}"
+      ]
+    },
+    {
+      "Sid": "DenyRdsCmk",
+      "Effect": "Deny",
+      "Action": "kms:*",
+      "Resource": "arn:aws:kms:ap-south-1:${AWS::AccountId}:key/${RdsCmkId}"
+    },
+    {
+      "Sid": "AllowSendToWebhookEventsQueueOnly",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:SendMessage",
+        "sqs:GetQueueUrl",
+        "sqs:GetQueueAttributes"
+      ],
+      "Resource": "arn:aws:sqs:ap-south-1:${AWS::AccountId}:webhook-events-${Env}.fifo"
+    },
+    {
+      "Sid": "DenyAllOtherSqs",
+      "Effect": "Deny",
+      "Action": "sqs:*",
+      "NotResource": "arn:aws:sqs:ap-south-1:${AWS::AccountId}:webhook-events-${Env}.fifo"
+    },
+    {
+      "Sid": "AllowOwnLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:CreateLogGroup"
+      ],
+      "Resource": "arn:aws:logs:ap-south-1:${AWS::AccountId}:log-group:/aws/lambda/razorpay-${Env}-webhook-producer:*"
+    },
+    {
+      "Sid": "AllowXrayAndMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "cloudwatch:PutMetricData"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "RazorpayCheckout/${Env}"
+        }
+      }
+    },
+    {
+      "Sid": "AllowReadConfigParameters",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+      ],
+      "Resource": "arn:aws:ssm:ap-south-1:${AWS::AccountId}:parameter/razorpay-checkout/${Env}/config/*"
+    }
+  ]
+}

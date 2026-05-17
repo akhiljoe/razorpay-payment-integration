@@ -2,7 +2,7 @@
 
 What shipped in each logical phase of development and why. Companion to `git log` and [IMPLEMENTATION_PLAN_V2.md](IMPLEMENTATION_PLAN_V2.md).
 
-Phases grouped by the deliverable they produced, not strictly by commit. Several commits often belong to one phase. Cross-references to DESIGN_v5 Section 17 (learnings) included where relevant.
+Phases grouped by the deliverable they produced, not strictly by commit. Several commits often belong to one phase. Cross-references to DESIGN_v6 Section 17 (learnings) included where relevant.
 
 ---
 
@@ -365,10 +365,10 @@ Both are optional; phases 1-17 form a self-contained, locally-shippable artifact
 
 1. Reading `git log`? Cross-reference here to understand the why behind each commit.
 2. Wondering "when did we add X?" — Ctrl-F for the feature; the phase it landed in tells you which commits to read.
-3. Looking for a hard-earned learning? Each phase's "Learnings captured" line points to DESIGN_v5 Section 17 entries.
+3. Looking for a hard-earned learning? Each phase's "Learnings captured" line points to DESIGN_v6 Section 17 entries.
 
 ## Related
 
 - [`IMPLEMENTATION_PLAN_V2.md`](IMPLEMENTATION_PLAN_V2.md) — forward-looking phase plan.
-- [`designs/DESIGN_v5.md`](designs/DESIGN_v5.md) — formal design + Section 17 learnings.
+- [`designs/DESIGN_v6.md`](../designs/DESIGN_v6.md) — formal design + Section 17 learnings.
 - `git log --oneline -20` — actual commit history.

@@ -76,5 +76,5 @@ SELECT status, paid_at, fulfilled_at, fulfilled_at - paid_at AS dwell
 ## Related
 
 - `.claude/rules/webhook-idempotency.md` for short-circuit semantics.
-- DESIGN_v5 Section 7 — fulfillment Lambda flow.
+- DESIGN_v6 Section 7 — fulfillment Lambda flow.
 - `dlq-drain.md`

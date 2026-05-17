@@ -1,0 +1,177 @@
+# PR safety checks. Runs on every pull request and push to main.
+#
+# Jobs:
+#   pre-commit     fast hooks (gitleaks, ruff, formatting). Mirrors local pre-commit.
+#   python-tests   unit tests + mypy for razorpay_checkout/
+#   cdk-synth-nag  cdk synth + cdk-nag for infra/
+#   checkov        Checkov scan against the synthesised CloudFormation
+#   infracost      Cost diff comment on the PR
+#
+# Required GitHub repo secrets:
+#   INFRACOST_API_KEY    free key from https://www.infracost.io/
+#   (No AWS keys. Deploys use OIDC in a separate workflow.)
+
+name: pr-checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write   # Infracost comment
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks needs history
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: pre-commit/action@v3.0.1
+
+  python-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: razorpay_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/razorpay_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v3
+      - name: Install razorpay_checkout (dev)
+        working-directory: razorpay_checkout
+        run: uv sync --extra dev
+      - name: Lint
+        working-directory: razorpay_checkout
+        run: uv run ruff check .
+      - name: Type check
+        working-directory: razorpay_checkout
+        run: uv run mypy
+      - name: Apply migrations
+        working-directory: razorpay_checkout
+        run: uv run alembic upgrade head
+      - name: Unit tests
+        working-directory: razorpay_checkout
+        run: uv run pytest -q --maxfail=1 -m "not requires_localstack"
+
+  cdk-synth-nag:
+    runs-on: ubuntu-latest
+    outputs:
+      cdk-out-path: ${{ steps.synth.outputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk@2
+      - uses: astral-sh/setup-uv@v3
+      - name: Install infra deps
+        working-directory: infra
+        run: uv sync --extra dev
+      - name: Lint infra
+        working-directory: infra
+        run: uv run ruff check .
+      - name: cdk synth (runs cdk-nag aspect)
+        id: synth
+        working-directory: infra
+        run: |
+          uv run cdk synth --quiet
+          echo "path=infra/cdk.out" >> "$GITHUB_OUTPUT"
+      - name: Upload synthesised CloudFormation
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-out
+          path: infra/cdk.out
+          retention-days: 7
+
+  checkov:
+    runs-on: ubuntu-latest
+    needs: cdk-synth-nag
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cdk-out
+          path: cdk.out
+      - name: Run Checkov against synthesised CloudFormation
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: cdk.out
+          framework: cloudformation
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+          soft_fail: false
+          skip_check: >-
+            CKV_AWS_18,CKV_AWS_50
+          # CKV_AWS_18: S3 access logging (covered by CloudTrail S3 events).
+          # CKV_AWS_50: Lambda X-Ray active (set conditionally; cdk-nag covers it).
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+
+  infracost:
+    runs-on: ubuntu-latest
+    needs: cdk-synth-nag
+    if: github.event_name == 'pull_request'
+    env:
+      INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+      - uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+      - name: Generate baseline cost (target branch)
+        run: |
+          if [ -f infra/cdk.out ]; then rm -rf infra/cdk.out; fi
+          # Best-effort baseline; if synth fails on base branch, skip diff.
+          infracost breakdown --path=infra/cdk.out \
+            --format=json --out-file=/tmp/baseline.json || echo "{}" > /tmp/baseline.json
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: cdk-out
+          path: infra/cdk.out
+      - name: Cost diff
+        run: |
+          infracost diff --path=infra/cdk.out \
+            --compare-to=/tmp/baseline.json \
+            --format=json --out-file=/tmp/diff.json || true
+      - name: Post comment
+        run: |
+          infracost comment github --path=/tmp/diff.json \
+            --repo=${{ github.repository }} \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --github-token=${{ secrets.GITHUB_TOKEN }} \
+            --behavior=update

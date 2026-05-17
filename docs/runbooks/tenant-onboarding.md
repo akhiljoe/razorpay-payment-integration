@@ -148,6 +148,6 @@ Hard-delete only after legal/data retention requirements are met, typically 7 ye
 
 ## Related
 
-- DESIGN_v5 Section 14 — multi-tenant architecture.
+- DESIGN_v6 Section 14 — multi-tenant architecture.
 - `.claude/rules/tenant-isolation.md` — the invariants this runbook supports.
 - `webhook-secret-rotation.md` for the next rotation in 90 days.

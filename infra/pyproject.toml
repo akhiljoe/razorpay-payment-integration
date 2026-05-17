@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "aws-cdk-lib>=2.150,<3",
     "constructs>=10.3,<11",
+    "cdk-nag>=2.34,<3",
 ]
 
 [project.optional-dependencies]

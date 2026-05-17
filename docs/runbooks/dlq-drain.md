@@ -99,5 +99,5 @@ Don't replay > 1000 messages in one shot. SQS FIFO has 300 tx/s per MessageGroup
 ## Related
 
 - `.claude/rules/webhook-idempotency.md` — why replay is safe.
-- DESIGN_v5 Section 6 — DLQ wiring.
+- DESIGN_v6 Section 6 — DLQ wiring.
 - Runbook `incident-checklist.md` for queue-depth incident triage.

@@ -1,0 +1,86 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowReadOnlyDbSecretOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/db/credentials-readonly-*"
+    },
+    {
+      "Sid": "DenyTenantAndWriteDbSecrets",
+      "Effect": "Deny",
+      "Action": "secretsmanager:*",
+      "Resource": [
+        "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/tenant/*",
+        "arn:aws:secretsmanager:ap-south-1:${AWS::AccountId}:secret:/razorpay-checkout/${Env}/db/credentials-*"
+      ]
+    },
+    {
+      "Sid": "AllowDecryptCmks",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": [
+        "arn:aws:kms:ap-south-1:${AWS::AccountId}:key/${SecretsCmkId}",
+        "arn:aws:kms:ap-south-1:${AWS::AccountId}:key/${SqsCmkId}"
+      ]
+    },
+    {
+      "Sid": "AllowReceiveFromFulfillmentDlqOnly",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl"
+      ],
+      "Resource": "arn:aws:sqs:ap-south-1:${AWS::AccountId}:fulfillment-${Env}-dlq.fifo"
+    },
+    {
+      "Sid": "DenyAllOtherSqs",
+      "Effect": "Deny",
+      "Action": "sqs:*",
+      "NotResource": "arn:aws:sqs:ap-south-1:${AWS::AccountId}:fulfillment-${Env}-dlq.fifo"
+    },
+    {
+      "Sid": "AllowPublishOpsAlert",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": [
+        "arn:aws:sns:ap-south-1:${AWS::AccountId}:razorpay-${Env}-ops-page",
+        "arn:aws:sns:ap-south-1:${AWS::AccountId}:razorpay-${Env}-ops-warn"
+      ]
+    },
+    {
+      "Sid": "AllowOwnLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:CreateLogGroup"
+      ],
+      "Resource": "arn:aws:logs:ap-south-1:${AWS::AccountId}:log-group:/aws/lambda/razorpay-${Env}-fulfillment-dlq-poller:*"
+    },
+    {
+      "Sid": "AllowXrayAndMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "cloudwatch:PutMetricData"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "RazorpayCheckout/${Env}"
+        }
+      }
+    }
+  ]
+}

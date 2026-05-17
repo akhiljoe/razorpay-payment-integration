@@ -7,7 +7,7 @@ Run synth only (no deploy) with:
     uv sync --extra dev
     uv run cdk synth
 
-To deploy (Phase 17 — requires real AWS credentials):
+To deploy (Phase 17 - requires real AWS credentials):
 
     aws sso login --profile razorpay-free  # or aws-vault, etc.
     AWS_PROFILE=razorpay-free uv run cdk deploy razorpay-free-foundation
@@ -23,8 +23,10 @@ import os
 import sys
 
 import aws_cdk as cdk
+from cdk_nag import AwsSolutionsChecks
 
 from stacks.foundation import FoundationStack
+from stacks.nag_suppressions import apply as apply_nag_suppressions
 from stacks.payments import PaymentsStack
 
 
@@ -79,6 +81,14 @@ def main() -> None:
 
     cdk.Tags.of(app).add("Project", "razorpay-checkout")
     cdk.Tags.of(app).add("ManagedBy", "cdk")
+
+    # cdk-nag: AWS Solutions ruleset against every stack in this app.
+    # Suppressions with justification live in stacks/nag_suppressions.py.
+    # Set RAZORPAY_NAG_DISABLED=1 to skip locally (CI always runs nag).
+    if not os.environ.get("RAZORPAY_NAG_DISABLED"):
+        cdk.Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
+        apply_nag_suppressions(app)
+
     app.synth()
 
 
