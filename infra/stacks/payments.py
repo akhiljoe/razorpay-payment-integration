@@ -90,6 +90,7 @@ class PaymentsStack(cdk.Stack):
             fifo=True,
             content_based_deduplication=True,
             encryption=sqs.QueueEncryption.SQS_MANAGED,
+            enforce_ssl=True,
             retention_period=cdk.Duration.days(14),
         )
         self.fulfillment_dlq = sqs.Queue(
@@ -99,6 +100,7 @@ class PaymentsStack(cdk.Stack):
             fifo=True,
             content_based_deduplication=True,
             encryption=sqs.QueueEncryption.SQS_MANAGED,
+            enforce_ssl=True,
             retention_period=cdk.Duration.days(14),
         )
 
@@ -109,6 +111,7 @@ class PaymentsStack(cdk.Stack):
             fifo=True,
             content_based_deduplication=True,
             encryption=sqs.QueueEncryption.SQS_MANAGED,
+            enforce_ssl=True,
             visibility_timeout=cdk.Duration.seconds(180),
             retention_period=cdk.Duration.days(4),
             dead_letter_queue=sqs.DeadLetterQueue(
@@ -123,6 +126,7 @@ class PaymentsStack(cdk.Stack):
             fifo=True,
             content_based_deduplication=True,
             encryption=sqs.QueueEncryption.SQS_MANAGED,
+            enforce_ssl=True,
             visibility_timeout=cdk.Duration.seconds(180),
             retention_period=cdk.Duration.days(4),
             dead_letter_queue=sqs.DeadLetterQueue(
