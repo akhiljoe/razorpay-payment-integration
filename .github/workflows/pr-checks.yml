@@ -23,6 +23,7 @@ permissions:
   contents: read
   pull-requests: write    # Infracost comment
   security-events: write  # checkov SARIF upload via github/codeql-action/upload-sarif
+  actions: read           # upload-sarif reads the parent workflow run to attach context
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
