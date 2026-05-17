@@ -24,13 +24,39 @@
     "@aws-cdk/aws-ec2:launchTemplateDefaultUserData": true,
     "@aws-cdk/aws-sns-subscriptions:restrictSqsDescryption": true,
     "razorpay:env": {
-      "free-track": {
-        "account": "REPLACE_WITH_ACCOUNT_ID",
-        "region": "ap-south-1",
-        "track": "free"
+      "dev": {
+        "account": "111111111111",
+        "region": "ap-south-1"
+      },
+      "prod": {
+        "account": "222222222222",
+        "region": "ap-south-1"
       }
     },
-    "razorpay:ops_email": "REPLACE_WITH_OPS_EMAIL@example.com",
-    "razorpay:budget_thresholds_usd": [5, 25, 100]
+    "razorpay:ops_email": "ops@example.com",
+    "razorpay:budget_thresholds_usd": [5, 25, 50],
+    "razorpay:domain": {
+      "dev": {
+        "api": "api.dev.example.com",
+        "widget": "widget.dev.example.com",
+        "tenant_origins": ["https://dev.example.com"]
+      },
+      "prod": {
+        "api": "api.example.com",
+        "widget": "widget.example.com",
+        "tenant_origins": ["https://example.com"]
+      }
+    },
+    "razorpay:features": {
+      "_comment": "All deferred services. Flip a flag and cdk deploy to enable. See designs/MIGRATION_ARCHITECTURE.md 'Deferred Services Enablement Guide'.",
+      "waf_enabled": false,
+      "provisioned_concurrency_enabled": false,
+      "inspector_enabled": false,
+      "config_enabled": false,
+      "guardduty_enabled": false,
+      "security_hub_enabled": false,
+      "rds_in_vpc_enabled": false,
+      "aurora_global_db_enabled": false
+    }
   }
 }

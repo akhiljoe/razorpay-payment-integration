@@ -29,38 +29,38 @@ Everything under `docs/` plus pointers to the design folder and the repo root.
 
 Mermaid diagrams. All render on GitHub directly.
 
-- [system-architecture.md](diagrams/system-architecture.md) — components, queues, DB
-- [webhook-flow.md](diagrams/webhook-flow.md) — sequence diagram of one event
-- [state-machine.md](diagrams/state-machine.md) — order status transitions
-- [deployment-topology.md](diagrams/deployment-topology.md) — AWS resources
+- [system-architecture.md](diagrams/system-architecture.md) - components, queues, DB
+- [webhook-flow.md](diagrams/webhook-flow.md) - sequence diagram of one event
+- [state-machine.md](diagrams/state-machine.md) - order status transitions
+- [deployment-topology.md](diagrams/deployment-topology.md) - AWS resources
 
 ### `docs/runbooks/`
 
 Incident response playbooks. Each has Symptom -> Detect -> Diagnose -> Resolve -> Prevent.
 
-- [README.md](runbooks/README.md) — index
-- [incident-checklist.md](runbooks/incident-checklist.md) — generic on-call response
-- [dlq-drain.md](runbooks/dlq-drain.md) — DLQ landings
-- [stuck-paid-order.md](runbooks/stuck-paid-order.md) — orders not reaching fulfilled
-- [webhook-secret-rotation.md](runbooks/webhook-secret-rotation.md) — zero-downtime rotation
-- [tenant-onboarding.md](runbooks/tenant-onboarding.md) — add a new tenant
+- [README.md](runbooks/README.md) - index
+- [incident-checklist.md](runbooks/incident-checklist.md) - generic on-call response
+- [dlq-drain.md](runbooks/dlq-drain.md) - DLQ landings
+- [stuck-paid-order.md](runbooks/stuck-paid-order.md) - orders not reaching fulfilled
+- [webhook-secret-rotation.md](runbooks/webhook-secret-rotation.md) - zero-downtime rotation
+- [tenant-onboarding.md](runbooks/tenant-onboarding.md) - add a new tenant
 
 ### `docs/cloud/`
 
 AWS deploy prerequisites and reference patterns.
 
-- [README.md](cloud/README.md) — index + decision tree
-- [account-setup.md](cloud/account-setup.md) — one-time AWS account bootstrap
-- [iam-bootstrap.md](cloud/iam-bootstrap.md) — IAM + SSM + KMS patterns
-- [cost-controls.md](cloud/cost-controls.md) — budgets, free-tier monitoring, promotion triggers
+- [README.md](cloud/README.md) - index + decision tree
+- [account-setup.md](cloud/account-setup.md) - one-time AWS account bootstrap
+- [iam-bootstrap.md](cloud/iam-bootstrap.md) - IAM + SSM + KMS patterns
+- [cost-controls.md](cloud/cost-controls.md) - budgets, free-tier monitoring, promotion triggers
 
 ## Top-level files (in repo root)
 
-- [README.md](../README.md) — project landing page
-- [CLAUDE.md](../CLAUDE.md) — rules for AI agents working on the codebase
-- [docker-compose.yml](../docker-compose.yml) — local Postgres + LocalStack
-- [.pre-commit-config.yaml](../.pre-commit-config.yaml) — local hooks
-- [renovate.json](../renovate.json) — dependency update automation
+- [README.md](../README.md) - project landing page
+- [CLAUDE.md](../CLAUDE.md) - rules for AI agents working on the codebase
+- [docker-compose.yml](../docker-compose.yml) - local Postgres + LocalStack
+- [.pre-commit-config.yaml](../.pre-commit-config.yaml) - local hooks
+- [renovate.json](../renovate.json) - dependency update automation
 
 ## The `designs/` folder
 
@@ -72,7 +72,7 @@ Source-of-truth design docs and the AWS migration plan. See [`../designs/README.
 
 1. [../README.md](../README.md)
 2. [ARCHITECTURE.md](ARCHITECTURE.md)
-3. [QUICKSTART.md](QUICKSTART.md) — run the system locally
+3. [QUICKSTART.md](QUICKSTART.md) - run the system locally
 
 **Day 2 (deeper):**
 
@@ -93,4 +93,4 @@ Source-of-truth design docs and the AWS migration plan. See [`../designs/README.
 
 ## Cross-reference style
 
-Every doc has a "Related" section linking to adjacent material. If you find a missing link, that's a doc bug — open an issue.
+Every doc has a "Related" section linking to adjacent material. If you find a missing link, that is a doc bug: open an issue.
