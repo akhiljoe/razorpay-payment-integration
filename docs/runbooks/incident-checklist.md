@@ -27,7 +27,7 @@ Check `signature_mismatch_total`. A spike here while everything else looks norma
 
 **Likely:** consumer Lambda concurrency limit hit, DB pool exhausted, or Razorpay sending a retry storm.
 
-```
+```text
 Check:  ApproximateNumberOfMessages on webhook-events.fifo
         Consumer Lambda ConcurrentExecutions vs reserved limit
         slow_pool_acquire log lines (DB)
@@ -63,7 +63,7 @@ See [`dlq-drain.md`](dlq-drain.md). Treat any DLQ landing as a P2 minimum.
 
 **Likely:** secret rotation mid-flight, attacker probing, or Razorpay re-signed retries with old secret.
 
-```
+```text
 Check:  rate of signature_mismatch_total
         recent rotation activity in audit log
         source IPs of failing requests
@@ -82,12 +82,14 @@ Check:  rate of signature_mismatch_total
 **Action:**
 
 1. Check `pg_stat_activity` for stuck queries:
+
    ```sql
    SELECT pid, state, wait_event, NOW() - query_start AS dur, query
      FROM pg_stat_activity
     WHERE state != 'idle'
     ORDER BY dur DESC LIMIT 20;
    ```
+
 2. Long `SELECT ... FOR UPDATE` waits → row contention. Identify the order, decide if you can kill the holder.
 3. Long `idle in transaction` → connection leak. Restart the offending Lambda.
 4. If RDS instance is CPU-saturated, scale up. Pool size > connection limit will not help; it just queues earlier.

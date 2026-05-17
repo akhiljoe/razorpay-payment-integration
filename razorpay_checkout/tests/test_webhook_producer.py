@@ -128,9 +128,7 @@ async def test_refund_event_extracts_order_id_from_refund_entity(
     producer: WebhookProducer, stub_sqs: AsyncMock
 ) -> None:
     body = json.dumps(_refund_payload(order_id="order_RF")).encode("utf-8")
-    await producer.process(
-        raw_body=body, header_signature=_sign(body), tenant_id="t_p6"
-    )
+    await producer.process(raw_body=body, header_signature=_sign(body), tenant_id="t_p6")
     kwargs = stub_sqs.send_message.await_args.kwargs
     assert kwargs["MessageGroupId"] == "order_RF"
 
@@ -139,9 +137,7 @@ async def test_order_paid_event_extracts_order_id_from_order_entity(
     producer: WebhookProducer, stub_sqs: AsyncMock
 ) -> None:
     body = json.dumps(_order_paid_payload(order_id="order_OP")).encode("utf-8")
-    await producer.process(
-        raw_body=body, header_signature=_sign(body), tenant_id="t_p6"
-    )
+    await producer.process(raw_body=body, header_signature=_sign(body), tenant_id="t_p6")
     kwargs = stub_sqs.send_message.await_args.kwargs
     assert kwargs["MessageGroupId"] == "order_OP"
 

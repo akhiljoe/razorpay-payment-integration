@@ -61,9 +61,7 @@ async def _process_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             event_id = envelope.get("event_id", "")
             if not tenant_id or not event_id:
                 raise ValueError("envelope missing tenant_id or event_id")
-            await _mark_dead(
-                pool, tenant_id, event_id, reason=f"dlq_message_id={message_id}"
-            )
+            await _mark_dead(pool, tenant_id, event_id, reason=f"dlq_message_id={message_id}")
             dead_event_count.add(1, {"tenant_id": tenant_id})
             _log.warning(
                 "dead_event_marked",

@@ -103,9 +103,7 @@ class RazorpayClient:
                 status_code=response.status_code,
                 receipt=receipt,
             )
-            raise RazorpayUnavailableError(
-                f"Razorpay returned {response.status_code}"
-            )
+            raise RazorpayUnavailableError(f"Razorpay returned {response.status_code}")
 
         if response.status_code >= 400:
             try:
@@ -146,9 +144,7 @@ class RazorpayClient:
             except httpx.TransportError as exc:
                 raise RazorpayUnavailableError(f"transport error: {exc}") from exc
             if response.status_code >= 500:
-                raise RazorpayUnavailableError(
-                    f"Razorpay returned {response.status_code}"
-                )
+                raise RazorpayUnavailableError(f"Razorpay returned {response.status_code}")
             if response.status_code >= 400:
                 try:
                     body: Any = response.json()

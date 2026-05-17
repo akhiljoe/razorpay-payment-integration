@@ -60,9 +60,7 @@ ALLOWED_TRANSITIONS: frozenset[tuple[OrderStatus, OrderStatus]] = frozenset(
 # non-terminal list used by `OrderService.create_or_get`. Note that `failed`
 # is idempotency-terminal but **not** lifecycle-terminal: `failed -> attempted`
 # is a legal transition (a new payment.* event can resurrect the order).
-TERMINAL: frozenset[OrderStatus] = frozenset(
-    {OrderStatus.FAILED, OrderStatus.REFUNDED}
-)
+TERMINAL: frozenset[OrderStatus] = frozenset({OrderStatus.FAILED, OrderStatus.REFUNDED})
 NON_TERMINAL: frozenset[OrderStatus] = frozenset(OrderStatus) - TERMINAL
 
 # Lifecycle-terminal: zero outgoing edges in the transition table. Only

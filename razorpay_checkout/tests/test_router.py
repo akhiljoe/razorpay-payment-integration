@@ -34,7 +34,9 @@ def _payment_signature(order_id: str, payment_id: str, key_secret: str) -> str:
 
 @pytest_asyncio.fixture
 async def app(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> AsyncIterator[FastAPI]:
     service = OrderService(
@@ -63,7 +65,8 @@ async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 @respx.mock
 async def test_post_orders_returns_201_with_expected_shape(
-    client: httpx.AsyncClient, db_config: RazorpayConfig,
+    client: httpx.AsyncClient,
+    db_config: RazorpayConfig,
 ) -> None:
     respx.post("https://api.razorpay.com/v1/orders").mock(
         return_value=httpx.Response(
@@ -143,7 +146,8 @@ async def test_get_order_404_on_unknown_id(client: httpx.AsyncClient) -> None:
 
 @respx.mock
 async def test_verify_callback_valid_signature(
-    client: httpx.AsyncClient, db_config: RazorpayConfig,
+    client: httpx.AsyncClient,
+    db_config: RazorpayConfig,
 ) -> None:
     respx.post("https://api.razorpay.com/v1/orders").mock(
         return_value=httpx.Response(
@@ -200,7 +204,8 @@ async def test_verify_callback_signature_mismatch_returns_400(
 
 @respx.mock
 async def test_verify_callback_unknown_order(
-    client: httpx.AsyncClient, db_config: RazorpayConfig,
+    client: httpx.AsyncClient,
+    db_config: RazorpayConfig,
 ) -> None:
     signature = _payment_signature(
         "order_UNKNOWN", "pay_X", db_config.key_secret.get_secret_value()

@@ -33,5 +33,4 @@ Authoritative design documents and the AWS migration plan. Everything here is so
 | File | Update protocol |
 |---|---|
 | MIGRATION_WRITEUP.md | Pillar 7 lists feature toggles + triggers. Tradeoff Cheat Sheet (§15) is the per-decision audit trail. |
-| MIGRATION_ARCHITECTURE.md | Assumptions Checklist at the bottom must be resolved before the affected phase ships. Feature toggles are documented per pillar with explicit trigger conditions. |
-| ../docs/cost-analysis.md | Header has `Last verified` date. PRs touching `infra/` must update or attest no impact. |
+| MIGRATION_ARCHITECTURE.md | Assumptions Checklist at the bottom must be resolved before the corresponding pillar is deployed. Each `Deferred Services Enable N` section is the runbook to flip a feature toggle in `infra/cdk.json` and roll it forward. |

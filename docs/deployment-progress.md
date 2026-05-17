@@ -44,6 +44,7 @@ Live tracker of what's actually provisioned where. Updated as phases land.
 | Prod | `admin-prod` | `enforce-mfa` (inline) | `razorpay-prod` |
 
 Local AWS CLI config:
+
 - `~/.aws/credentials` has both profiles
 - `~/.aws/config` has `mfa_serial` + `duration_seconds=43200` per profile
 

@@ -7,8 +7,8 @@ Clone-to-running locally in ~10 minutes. No AWS account required. Tested command
 - **Windows + git bash** (instructions use POSIX syntax; PowerShell users adapt)
 - **Docker Desktop** running
 - **Node.js 20+** (`node --version`)
-- **`uv`** installed (`uv --version`; install via https://docs.astral.sh/uv/)
-- **Razorpay test keys** if you want to run the buyer-perspective storefront against real Razorpay test mode. Get them at https://dashboard.razorpay.com → Settings → API Keys → Generate Test Key. Skippable if you only run unit tests + dashboard scenarios.
+- **`uv`** installed (`uv --version`; install via <https://docs.astral.sh/uv/>)
+- **Razorpay test keys** if you want to run the buyer-perspective storefront against real Razorpay test mode. Get them at <https://dashboard.razorpay.com> → Settings → API Keys → Generate Test Key. Skippable if you only run unit tests + dashboard scenarios.
 
 ## Step 1 — Clone and start infrastructure (2 min)
 
@@ -126,7 +126,7 @@ In ~10 minutes you have a fully functioning, locally-runnable payment integratio
 
 ## Common first-time issues
 
-- **`uv: command not found`** — install from https://docs.astral.sh/uv/, restart terminal.
+- **`uv: command not found`** — install from <https://docs.astral.sh/uv/>, restart terminal.
 - **`docker compose` says `network already exists`** — run `docker compose down` then `docker compose up -d`.
 - **`alembic upgrade head` fails with auth error** — Postgres container password is `razorpay`. The DSN in `.env` should already match. If you changed Postgres creds, update `RAZORPAY_DB_DSN` in `.env`.
 - **uvicorn 500s on `/payments/orders`** — your `.env` has placeholder Razorpay keys. Replace them, restart uvicorn. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) section "Order creation returns 500".

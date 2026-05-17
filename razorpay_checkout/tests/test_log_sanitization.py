@@ -56,9 +56,7 @@ def _captured_payload(order_id: str = "order_LEAK") -> bytes:
             "id": "evt_LEAK_1",
             "event": "payment.captured",
             "payload": {
-                "payment": {
-                    "entity": {"order_id": order_id, "id": "pay_X", "amount": 50000}
-                }
+                "payment": {"entity": {"order_id": order_id, "id": "pay_X", "amount": 50000}}
             },
         }
     ).encode("utf-8")

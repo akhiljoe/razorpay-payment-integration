@@ -35,6 +35,7 @@ How to keep this project's AWS bill in single-digit dollars on the Free Track, a
 - **$100 / month** — alarms at 80% ($80). Hard halt. Disable Lambdas, freeze deploys, root cause before any new spend.
 
 Notifications go to:
+
 - The email in `cdk.json` context `razorpay:ops_email` (if set).
 - The `OpsAlerts` SNS topic (always, for paging integrations).
 

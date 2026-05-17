@@ -109,10 +109,7 @@ async def reconcile(
             )
             continue
 
-        if (
-            isinstance(rzp_amount, int)
-            and local["amount"] != rzp_amount
-        ):
+        if isinstance(rzp_amount, int) and local["amount"] != rzp_amount:
             mismatches.append(
                 ReconcileMismatch(
                     razorpay_payment_id=rzp_id,
@@ -153,9 +150,7 @@ async def reconcile(
             )
 
     for m in mismatches:
-        reconciliation_mismatch_count.add(
-            1, {"reason": m.reason, "tenant_id": tenant_id}
-        )
+        reconciliation_mismatch_count.add(1, {"reason": m.reason, "tenant_id": tenant_id})
     _log.info(
         "reconcile_completed",
         tenant_id=tenant_id,

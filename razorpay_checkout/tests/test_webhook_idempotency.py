@@ -110,9 +110,7 @@ def test_payment_authorized_proceeds_when_before_authorized(
 # ---------- payment.failed ----------
 
 
-@pytest.mark.parametrize(
-    "order_status", [OrderStatus.FAILED, OrderStatus.REFUNDED]
-)
+@pytest.mark.parametrize("order_status", [OrderStatus.FAILED, OrderStatus.REFUNDED])
 def test_payment_failed_skips_when_terminal(order_status: OrderStatus) -> None:
     assert (
         should_skip("payment.failed", order_status, captured_payment_exists=False)
@@ -154,9 +152,7 @@ def test_payment_failed_proceeds_when_before_paid(order_status: OrderStatus) -> 
 
 def test_refund_processed_skips_when_refunded() -> None:
     assert (
-        should_skip(
-            "refund.processed", OrderStatus.REFUNDED, captured_payment_exists=False
-        )
+        should_skip("refund.processed", OrderStatus.REFUNDED, captured_payment_exists=False)
         is SkipDecision.SKIP_ALREADY_APPLIED
     )
 
@@ -183,8 +179,7 @@ def test_refund_processed_proceeds_otherwise(order_status: OrderStatus) -> None:
 def test_order_paid_always_proceeds() -> None:
     for status in OrderStatus:
         assert (
-            should_skip("order.paid", status, captured_payment_exists=False)
-            is SkipDecision.PROCEED
+            should_skip("order.paid", status, captured_payment_exists=False) is SkipDecision.PROCEED
         )
 
 

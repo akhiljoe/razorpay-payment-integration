@@ -502,6 +502,7 @@ Source of truth: `designs/DESIGN_v6.md`. Phases are ordered by hard dependency. 
   codes; example invocations in their module docstrings.
 
 **Phase gate.**
+
 - `pytest tests/test_admin_routes.py tests/test_dev_routes.py` green.
 - `dashboard.html` "Run all scenarios in sequence" → 11/11 PASS.
 - Manual: visit `/admin/dashboard` with no key → modal opens; with

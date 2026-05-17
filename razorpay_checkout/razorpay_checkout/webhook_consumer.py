@@ -67,6 +67,7 @@ def _parse_received_at(value: str) -> datetime:
 def _record_duration(start_ns: int, tenant_id: str) -> None:
     """Emit webhook_consumer_duration_ms for the elapsed window."""
     import time as _time  # noqa: PLC0415
+
     elapsed_ms = (_time.perf_counter_ns() - start_ns) / 1_000_000.0
     webhook_consumer_duration_ms.record(elapsed_ms, {"tenant_id": tenant_id})
 
@@ -123,6 +124,7 @@ class WebhookConsumer:
         bug, not a recoverable failure).
         """
         import time as _time  # noqa: PLC0415
+
         _start_ns = _time.perf_counter_ns()
         envelope = self._parse_envelope(message_body)
         cid = self._bind_correlation_id(message_attributes, envelope)
@@ -243,9 +245,7 @@ class WebhookConsumer:
         cid_from_attr: str | None = None
         if isinstance(attr, dict):
             cid_from_attr = (
-                attr.get("stringValue")
-                or attr.get("StringValue")
-                or attr.get("string_value")
+                attr.get("stringValue") or attr.get("StringValue") or attr.get("string_value")
             )
         elif isinstance(attr, str) and attr:
             cid_from_attr = attr
@@ -278,9 +278,7 @@ class WebhookConsumer:
             )
             if order_row is None:
                 # Unknown order. Mark event failed; manual reconcile/replay required.
-                await self._mark_event_failed(
-                    conn, webhook_event_id, reason="unknown_order"
-                )
+                await self._mark_event_failed(conn, webhook_event_id, reason="unknown_order")
                 _log.warning(
                     "consumer_unknown_order",
                     tenant_id=tenant_id,
@@ -302,13 +300,9 @@ class WebhookConsumer:
                     captured_exists = await self._captured_payment_exists(
                         conn, tenant_id, razorpay_payment_id
                     )
-            decision = should_skip(
-                event, order_status, captured_payment_exists=captured_exists
-            )
+            decision = should_skip(event, order_status, captured_payment_exists=captured_exists)
             if decision is not SkipDecision.PROCEED:
-                await self._mark_event_done(
-                    conn, webhook_event_id, note=decision.value
-                )
+                await self._mark_event_done(conn, webhook_event_id, note=decision.value)
                 _log.info(
                     "consumer_skipped",
                     tenant_id=tenant_id,
@@ -321,10 +315,7 @@ class WebhookConsumer:
             # Amount assertion (capture and authorize events only).
             if event in {"payment.authorized", "payment.captured"}:
                 event_amount = (
-                    payload.get("payload", {})
-                    .get("payment", {})
-                    .get("entity", {})
-                    .get("amount")
+                    payload.get("payload", {}).get("payment", {}).get("entity", {}).get("amount")
                 )
                 if event_amount != order_row["amount"]:
                     await self._mark_event_failed(
@@ -555,7 +546,5 @@ def _extract_razorpay_order_id(payload: dict[str, Any], event: str) -> str:
         order_id = None
 
     if not isinstance(order_id, str) or not order_id:
-        raise ConsumerEnvelopeError(
-            f"could not extract razorpay_order_id for event {event!r}"
-        )
+        raise ConsumerEnvelopeError(f"could not extract razorpay_order_id for event {event!r}")
     return order_id

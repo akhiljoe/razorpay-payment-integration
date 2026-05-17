@@ -4,6 +4,7 @@ Revision ID: 0007_order_events
 Revises: 0006_webhook_events
 Create Date: 2026-05-11
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

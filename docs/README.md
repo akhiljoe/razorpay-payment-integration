@@ -76,15 +76,15 @@ Source-of-truth design docs and the AWS migration plan. See [`../designs/README.
 
 **Day 2 (deeper):**
 
-4. [PHASES.md](PHASES.md)
-5. One runbook of your choice from [runbooks/](runbooks/)
-6. [../designs/DESIGN_v6.md](../designs/DESIGN_v6.md) Section 17 (the lessons learned)
+1. [PHASES.md](PHASES.md)
+2. One runbook of your choice from [runbooks/](runbooks/)
+3. [../designs/DESIGN_v6.md](../designs/DESIGN_v6.md) Section 17 (the lessons learned)
 
 **When planning AWS deploy:**
 
-7. [../designs/MIGRATION_WRITEUP.md](../designs/MIGRATION_WRITEUP.md) (the why)
-8. [../designs/MIGRATION_ARCHITECTURE.md](../designs/MIGRATION_ARCHITECTURE.md) (the what)
-9. [cost-analysis.md](cost-analysis.md) (the bill)
+1. [../designs/MIGRATION_WRITEUP.md](../designs/MIGRATION_WRITEUP.md) (the why)
+2. [../designs/MIGRATION_ARCHITECTURE.md](../designs/MIGRATION_ARCHITECTURE.md) (the what)
+3. [cost-analysis.md](cost-analysis.md) (the bill)
 
 **Whenever needed:**
 

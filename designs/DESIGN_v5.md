@@ -26,7 +26,7 @@ Final design. Single source of truth. Supersedes all prior revisions.
 
 ## 1. Repository Layout
 
-```
+```text
 razorpay-payment-integration/
 ├── razorpay_checkout/
 │   ├── pyproject.toml
@@ -180,21 +180,21 @@ The producer holds no database credentials. Its sole responsibilities are signat
 
 The consumer is triggered by `webhook-events.fifo` and is the only component with Postgres credentials. It has no public internet egress; SQS is reached via a VPC Interface Endpoint.
 
-7. Read message. Bind `correlation_id` from `MessageAttributes` to log context.
-8. INSERT into `webhook_events` with `ON CONFLICT (tenant_id, event_id) DO NOTHING`, using `received_at` from the envelope. On conflict, increment `webhook_duplicate_count`, return success (SQS deletes the message).
-9. Begin DB transaction. Acquire `SELECT ... FOR UPDATE` on the `orders` row.
-10. **Primary idempotency guard.** Determine if the event's intended transition has already been applied:
+1. Read message. Bind `correlation_id` from `MessageAttributes` to log context.
+2. INSERT into `webhook_events` with `ON CONFLICT (tenant_id, event_id) DO NOTHING`, using `received_at` from the envelope. On conflict, increment `webhook_duplicate_count`, return success (SQS deletes the message).
+3. Begin DB transaction. Acquire `SELECT ... FOR UPDATE` on the `orders` row.
+4. **Primary idempotency guard.** Determine if the event's intended transition has already been applied:
     - `payment.captured`: skip if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed', 'refunded')` AND a captured `payments` row exists for this `razorpay_payment_id`.
     - `payment.authorized`: skip if `order.status IN ('authorized', 'paid', 'fulfilled', 'fulfillment_failed', 'refunded')`.
     - `payment.failed`: skip if `order.status IN ('failed', 'refunded')`. No-op (mark `done`) if `order.status IN ('paid', 'fulfilled', 'fulfillment_failed')`.
     - `refund.processed`: skip if `order.status = 'refunded'`.
 
     On skip, mark `webhook_events.processing_status = 'done'`, commit, return success.
-11. Assert `event_amount == order.amount` for capture and authorize events. On mismatch, set `processing_status='failed'`, alert, return success (do not raise; the SQS message is consumed, the row records the failure for replay).
-12. Execute the state transition via `OrderService.transition` (Section 4). Insert payment row only for terminal payment outcomes (`captured`, `failed`). Refunds UPDATE the existing captured `payments` row to `status='refunded'` and INSERT a row into `refunds`. Insert `order_events` for every transition.
-13. Commit the transaction.
-14. On a successful `paid` transition, publish to `fulfillment-queue.fifo` with `MessageGroupId=order_id` and `correlation_id` in `MessageAttributes`.
-15. Return success. SQS deletes the `webhook-events.fifo` message.
+5. Assert `event_amount == order.amount` for capture and authorize events. On mismatch, set `processing_status='failed'`, alert, return success (do not raise; the SQS message is consumed, the row records the failure for replay).
+6. Execute the state transition via `OrderService.transition` (Section 4). Insert payment row only for terminal payment outcomes (`captured`, `failed`). Refunds UPDATE the existing captured `payments` row to `status='refunded'` and INSERT a row into `refunds`. Insert `order_events` for every transition.
+7. Commit the transaction.
+8. On a successful `paid` transition, publish to `fulfillment-queue.fifo` with `MessageGroupId=order_id` and `correlation_id` in `MessageAttributes`.
+9. Return success. SQS deletes the `webhook-events.fifo` message.
 
 **Producer-to-consumer latency budget.** Producer p99 is target < 100 ms (signature verify + SQS publish). Consumer p99 < 500 ms. End-to-end webhook-to-`paid` is well inside the polling client's 2-second interval.
 
@@ -379,7 +379,7 @@ export interface PaymentError {
 
 **Required CSP directives:**
 
-```
+```text
 script-src https://checkout.razorpay.com;
 frame-src https://api.razorpay.com;
 ```
@@ -939,7 +939,7 @@ sequenceDiagram
 
 Three AWS Lambda functions connected by two SQS FIFO queues. The split between **Webhook Producer** and **Webhook Consumer** is a deliberate security and cost-floor decision: the public-facing Lambda holds no database credentials, and the database-facing Lambda has no public internet egress. This eliminates the future NAT Gateway cost (~$32/month) when Postgres migrates to a private VPC subnet, and keeps the security boundary tight from day one.
 
-```
+```text
 Razorpay ──(HTTPS)──> Webhook Producer ──> webhook-events.fifo ──> Webhook Consumer ──> Postgres
   (public)                (public)              (FIFO)                 (private VPC)
                                                                             │
@@ -1147,12 +1147,12 @@ class FulfillmentHook(Protocol):
 
 ## 12. Operational Runbooks
 
-**Runbook 1: Stuck or Dead Webhook Event**
+### Runbook 1: Stuck or Dead Webhook Event
 
 - Trigger: `webhook_events.processing_status = 'dead'` count > 0 OR `processing_status = 'failed'` AND `attempts >= 3` AND `received_at < NOW() - 1hr`.
 - Steps: (1) `GET /admin/events/{id}` to inspect `error`. (2) Fix root cause. (3) `POST /admin/events/{id}/replay`. (4) Monitor.
 
-**Runbook 2: Fulfillment DLQ Message**
+### Runbook 2: Fulfillment DLQ Message
 
 - Trigger: `fulfillment-dlq.fifo` depth > 0. A scheduled DLQ-poller transitions the order to `fulfillment_failed`.
 - Steps: (1) Inspect DLQ message and `order_events` row recording `fulfillment_failed` (includes `correlation_id` and error). (2) Search CloudWatch Logs by `correlation_id`. (3) Fix root cause in `FulfillmentHook`. (4) `POST /admin/orders/{order_id}/retry-fulfillment`. (5) Monitor until `fulfilled`.
@@ -1169,26 +1169,26 @@ class FulfillmentHook(Protocol):
 - Cause: Razorpay account has auto-capture off, or capture is being performed manually.
 - Steps: (1) Inspect order in Razorpay dashboard. (2) Initiate manual capture if appropriate, or allow the 5-day capture window to expire. (3) Monitor for `payment.captured` or `payment.failed`.
 
-**Runbook 5: Reconciliation Mismatch**
+### Runbook 5: Reconciliation Mismatch
 
 - Steps: (1) `missing_in_local_db`: check Razorpay dashboard. If captured, check `webhook_events`. If `failed` or `dead`, run Runbook 1. If absent, manually insert. (2) `amount_mismatch`: correct local amount. Razorpay is authoritative. (3) `status_mismatch`: transition via admin endpoint. (4) `refund_status_mismatch`: confirm in dashboard, replay missing `refund.processed` via Runbook 1.
 
-**Runbook 6: Neon Instance Paused**
+### Runbook 6: Neon Instance Paused
 
 - Trigger: All webhook events returning 503.
 - Prevention: EventBridge keep-alive runs `SELECT 1` every 4 days.
 - Steps: (1) Log in to Neon console. (2) Resume the project. (3) Verify Lambda connectivity. Razorpay retries cover the window.
 
-**Runbook 7: Webhook Secret Rotation (Zero-Downtime)**
+### Runbook 7: Webhook Secret Rotation (Zero-Downtime)
 
 - Steps: (1) Add `RAZORPAY_WEBHOOK_SECRET_PREVIOUS` to Webhook Lambda. (2) `verify_webhook_signature` tries current first, falls back. (3) Update Razorpay dashboard. (4) After 24h, remove `RAZORPAY_WEBHOOK_SECRET_PREVIOUS`.
 
-**Runbook 8: Captured Payment With No Fulfillment**
+### Runbook 8: Captured Payment With No Fulfillment
 
 - Trigger: Support ticket; order is `paid` but not `fulfilled`, no DLQ message.
 - Steps: (1) Check `order_events` for history. (2) Check SQS queue and DLQ. (3) `POST /admin/orders/{order_id}/retry-fulfillment`. (4) Monitor.
 
-**Runbook 9: Refund Out of Sync**
+### Runbook 9: Refund Out of Sync
 
 - Trigger: Support ticket or reconciliation flag. Razorpay shows refund processed but local order still in `paid` or `fulfilled`.
 - Steps: (1) Confirm refund in Razorpay dashboard. (2) Check `webhook_events` for the `refund.processed` event. (3) Replay via Runbook 1 if present; backfill via admin endpoint if absent. (4) Verify transition to `refunded`.
@@ -1197,7 +1197,7 @@ class FulfillmentHook(Protocol):
 
 ## 13. Monitoring and Alerts
 
-**Dashboard: Payment Health**
+### Dashboard: Payment Health
 
 - Webhook events by `processing_status` over last 24h.
 - Order status distribution over last 7 days (includes `authorized` and `fulfillment_failed`).
@@ -1370,7 +1370,6 @@ The simulator computes `HMAC-SHA256(webhook_secret, body)` and POSTs with header
 | **VPC placement of Consumer and Fulfillment Lambdas** | Both run public on Free Track. Producer-consumer split provides the security boundary; network isolation does not. | RDS-in-VPC migration OR Paid Track provisioned OR external compliance requirement (PCI scope expansion). |
 | **VPC Interface Endpoints (SQS, Secrets Manager, Logs, Monitoring)** | None. Lambdas reach AWS services via public APIs. | Same trigger as VPC placement above. |
 | **Lambda Power Tuning** | Static memory: Producer 512 MB, Consumer 1024 MB, Fulfillment 1024 MB, monitors 256 MB. | Sustained webhook p95 > 800 ms OR fulfillment p95 > 2 s OR cost per invocation > $0.0005. Then run AWS Lambda Power Tuner against production traffic samples and adjust. |
-                                                                                                                                                                                                                                                                                                                                                                  
 
 ---
 
@@ -1630,7 +1629,7 @@ Fulfillment).
 **Why.** Phase 13 local end-to-end smoke surfaced a three-correlation-id
 trail across one event:
 
-```
+```text
 created → attempted (consumer):   d8ea5762  ← fresh, not from MessageAttributes
 attempted → paid    (consumer):   d8ea5762  ← carried via contextvar
 paid → fulfilled    (fulfillment): 710f1055 ← fresh again

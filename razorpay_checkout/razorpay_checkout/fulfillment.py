@@ -69,8 +69,7 @@ class FulfillmentHook(Protocol):
         tenant_id: str,
         amount: int,
         metadata: dict[str, Any],
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class DefaultFulfillmentHook:
@@ -138,6 +137,7 @@ class FulfillmentProcessor:
         message_attributes: dict[str, Any] | None = None,
     ) -> FulfillmentResult:
         import time as _time  # noqa: PLC0415
+
         _start_ns = _time.perf_counter_ns()
         envelope = self._parse_envelope(message_body)
         cid = self._bind_correlation_id(message_attributes)
@@ -164,9 +164,7 @@ class FulfillmentProcessor:
                         tenant_id=tenant_id,
                         order_id=str(order_id),
                     )
-                    return FulfillmentResult(
-                        FulfillmentResult.UNEXPECTED_STATE, order_id, None
-                    )
+                    return FulfillmentResult(FulfillmentResult.UNEXPECTED_STATE, order_id, None)
 
                 current = OrderStatus(row["status"])
 
@@ -177,9 +175,7 @@ class FulfillmentProcessor:
                         tenant_id=tenant_id,
                         order_id=str(order_id),
                     )
-                    return FulfillmentResult(
-                        FulfillmentResult.SHORT_CIRCUITED, order_id, current
-                    )
+                    return FulfillmentResult(FulfillmentResult.SHORT_CIRCUITED, order_id, current)
 
                 # Only `paid` and `fulfillment_failed` are valid entry states.
                 if current not in (OrderStatus.PAID, OrderStatus.FULFILLMENT_FAILED):
@@ -189,9 +185,7 @@ class FulfillmentProcessor:
                         order_id=str(order_id),
                         order_status=current.value,
                     )
-                    return FulfillmentResult(
-                        FulfillmentResult.UNEXPECTED_STATE, order_id, current
-                    )
+                    return FulfillmentResult(FulfillmentResult.UNEXPECTED_STATE, order_id, current)
 
                 metadata: dict[str, Any] = {
                     "correlation_id": cid,
@@ -227,9 +221,7 @@ class FulfillmentProcessor:
             order_id=str(order_id),
             from_status=current.value,
         )
-        return FulfillmentResult(
-            FulfillmentResult.FULFILLED, order_id, current
-        )
+        return FulfillmentResult(FulfillmentResult.FULFILLED, order_id, current)
 
     # ---------- helpers ----------
 
@@ -245,9 +237,7 @@ class FulfillmentProcessor:
                 raise FulfillmentEnvelopeError(f"envelope missing field {key!r}")
         return envelope
 
-    def _bind_correlation_id(
-        self, message_attributes: dict[str, Any] | None
-    ) -> str:
+    def _bind_correlation_id(self, message_attributes: dict[str, Any] | None) -> str:
         """Re-bind correlation_id from SQS MessageAttributes (Critical Invariant 9).
 
         Mirrors `WebhookConsumer._bind_correlation_id`. Accepts both the raw
@@ -260,9 +250,7 @@ class FulfillmentProcessor:
         cid_from_attr: str | None = None
         if isinstance(attr, dict):
             cid_from_attr = (
-                attr.get("stringValue")
-                or attr.get("StringValue")
-                or attr.get("string_value")
+                attr.get("stringValue") or attr.get("StringValue") or attr.get("string_value")
             )
         elif isinstance(attr, str) and attr:
             cid_from_attr = attr

@@ -86,7 +86,9 @@ def _payment_entity(
     }
 
 
-def _refund_entity(refund_id: str, payment_id: str, order_id: str, amount: int) -> dict[str, Any]:
+def _refund_entity(
+    refund_id: str, payment_id: str, order_id: str, amount: int
+) -> dict[str, Any]:
     return {
         "id": refund_id,
         "entity": "refund",

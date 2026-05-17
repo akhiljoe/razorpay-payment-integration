@@ -88,7 +88,7 @@ Source: [`../CLAUDE.md`](../CLAUDE.md). Every one is tested and at least one was
 
 ## State machine
 
-```
+```text
 initializing → created
 created → attempted | failed
 attempted → authorized | paid | failed
@@ -118,6 +118,7 @@ Full transition table: DESIGN_v6 Section 4 and the `payment-state-machine` skill
 ## Why this architecture
 
 **Why split producer from consumer?** Two reasons:
+
 1. Razorpay's 500 ms response SLA. The producer must return 200 fast; DB transitions can be slow.
 2. **Security boundary.** The public-facing function holds zero database credentials. A compromise of the producer cannot reach the DB.
 

@@ -29,9 +29,11 @@ docker-compose up -d
 ```
 
 Wait ~10 seconds, then verify:
+
 ```bash
 docker ps
 ```
+
 You should see one Postgres container and one LocalStack container.
 
 ### Terminal 2 — Backend
@@ -45,9 +47,11 @@ uv run --project ..\..\razorpay_checkout uvicorn main:app --reload --port 8000
 ```
 
 Leave it running. Once it logs `Application startup complete`, seed the local tenant in **a one-off shell**:
+
 ```bash
 curl -X POST http://localhost:8000/dev/reset
 ```
+
 (This truncates and inserts the `local-dev` tenant row. Re-run any time you want a clean slate.)
 
 ### Terminal 3 — SQS pump
@@ -68,7 +72,7 @@ python -m http.server 5500
 
 ## Drive the flow
 
-1. Open **http://localhost:5500/reserve.html** in your browser.
+1. Open **<http://localhost:5500/reserve.html>** in your browser.
 2. **Pick a date** from the calendar (Fridays/Saturdays/Sundays are open by default; today + 30 days range).
 3. Fill in name/guests/phone/email. The total updates as you change guest count.
 4. Click **"Send the RSVP"**.
@@ -81,7 +85,7 @@ python -m http.server 5500
 
 ## What to watch while it runs
 
-- **http://localhost:8000/dev/dashboard** — live Mission Control. Shows orders, webhook events, SQS queue depth, state transitions.
+- **<http://localhost:8000/dev/dashboard>** — live Mission Control. Shows orders, webhook events, SQS queue depth, state transitions.
 - **Terminal 2 logs** — JSON-formatted, one line per webhook event, with `correlation_id` tying the whole chain together.
 - **Terminal 3 logs** — shows the pump picking up messages off `webhook-events.fifo` and `fulfillment-queue.fifo`.
 

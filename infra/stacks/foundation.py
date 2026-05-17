@@ -23,7 +23,7 @@ reference them via `Fn.import_value`.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import aws_cdk as cdk
 import aws_cdk.aws_budgets as budgets
@@ -127,8 +127,7 @@ class FoundationStack(cdk.Stack):
         # AWS Budgets are account-wide; we tag the budget with the project so
         # multi-project accounts can attribute the alarm.
         notify_to = (
-            [ops_email] if ops_email and ops_email != "REPLACE_WITH_OPS_EMAIL@example.com"
-            else []
+            [ops_email] if ops_email and ops_email != "REPLACE_WITH_OPS_EMAIL@example.com" else []
         )
 
         # Subscribers: always include the SNS topic (so paging integrations

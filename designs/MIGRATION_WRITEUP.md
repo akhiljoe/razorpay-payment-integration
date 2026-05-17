@@ -178,7 +178,7 @@ VPC isolation costs ~$130/mo per environment (PrivateLink endpoints) and provide
 
 ### 6.2 Edge ingress
 
-```
+```text
 Razorpay -> API Gateway HTTP API -> Producer Lambda -> SQS
 ```
 
@@ -569,7 +569,7 @@ sequenceDiagram
 
 ### 12.2 Pipeline stages
 
-```
+```text
 PR -> Lint + Tests + Type Check
    -> CDK Synth + cdk-nag + Checkov + Infracost
    -> Deploy Dev
@@ -702,66 +702,4 @@ flowchart TB
         end
 
         subgraph Compute[Lambdas, all non-VPC]
-            PROD[Producer]
-            CONS[Consumer]
-            FULF[Fulfillment]
-            DLQ1[Fulfillment DLQ Poller]
-            DLQ2[Webhook Events DLQ Poller]
-            MON[Stale Paid Monitor]
-        end
-
-        subgraph Messaging[SQS FIFO]
-            WQ[webhook-events.fifo + DLQ]
-            FQ[fulfillment.fifo + DLQ]
-        end
-
-        subgraph Storage[Storage]
-            SM[Secrets Manager<br/>4 secrets]
-            SSM[SSM Parameter Store<br/>config + feature flags]
-            S3LOG[S3 log archive<br/>Object Lock]
-        end
-
-        subgraph Crypto[Encryption]
-            KMS[5 KMS CMKs]
-        end
-
-        subgraph Obs[Observability]
-            CT[CloudTrail]
-            CW[CloudWatch Logs + Metrics + Alarms]
-            CWDash[CloudWatch Dashboard]
-            MC[Mission Control Dashboard]
-            SNS_OPS[SNS ops topic - email]
-        end
-    end
-
-    Neon[(Neon Postgres<br/>external, free tier)]
-
-    Customer --> DNS
-    DNS --> CFWidget
-    Customer -->|create order, poll| APIGW
-    RZP -->|webhook| DNS
-    DNS --> APIGW --> PROD
-    PROD -->|reads tenant secret| SM
-    PROD --> WQ
-    WQ --> CONS
-    CONS --> SM
-    CONS -->|TLS DSN| Neon
-    CONS --> FQ
-    FQ --> FULF
-    FULF --> SM
-    FULF --> Neon
-    WQ -.maxReceive=5.-> DLQ2
-    FQ -.maxReceive=5.-> DLQ1
-    DLQ1 & DLQ2 --> Neon
-    MON --> Neon
-    DLQ1 & DLQ2 & MON --> SNS_OPS
-    PROD & CONS & FULF & MON & DLQ1 & DLQ2 --> CW
-    CW --> CWDash
-    Neon -.read by.-> MC
-    CWDash --> SNS_OPS
-    PROD & CONS & FULF -.audit.-> CT
-    CT --> S3LOG
-    KMS -.encrypts.-> SM & WQ & FQ & S3LOG
-```
-
-This is the deployed system. Every service in this diagram is in scope for the phased rollout in §13.
+            PROD

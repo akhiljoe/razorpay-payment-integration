@@ -59,9 +59,7 @@ def test_oversized_envelope_raises() -> None:
 # ---------- Integration: publish to LocalStack and read back ----------
 
 
-async def test_publish_webhook_event_round_trip(
-    sqs_client, webhook_events_queue_url
-) -> None:
+async def test_publish_webhook_event_round_trip(sqs_client, webhook_events_queue_url) -> None:
     body = build_webhook_envelope(
         tenant_id="t1",
         event_id="evt_RT_1",
@@ -105,9 +103,7 @@ async def test_publish_webhook_event_round_trip(
     )
 
 
-async def test_sqs_dedup_suppresses_same_event_id(
-    sqs_client, webhook_events_queue_url
-) -> None:
+async def test_sqs_dedup_suppresses_same_event_id(sqs_client, webhook_events_queue_url) -> None:
     """Two sends with the same MessageDeduplicationId must yield only one delivered message."""
     body = build_webhook_envelope(
         tenant_id="t1",

@@ -82,9 +82,7 @@ def configure_otel(
     """
     global _tracer_provider, _meter_provider
 
-    resource = Resource.create(
-        {"service.name": SERVICE_NAME, "tenant.id": config.tenant_id}
-    )
+    resource = Resource.create({"service.name": SERVICE_NAME, "tenant.id": config.tenant_id})
 
     # ---------- Tracer ----------
     tracer_provider = TracerProvider(resource=resource)
@@ -96,9 +94,7 @@ def configure_otel(
         )
 
         endpoint = config.otel_endpoint or "http://localhost:4318/v1/traces"
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
-        )
+        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
     # xray: emit via ADOT layer at runtime; nothing to add here.
 
     # Decorate every span with the contextvar correlation_id at start.
@@ -111,9 +107,7 @@ def configure_otel(
     if not readers:
         if config.otel_exporter == "stdout":
             readers.append(
-                PeriodicExportingMetricReader(
-                    ConsoleMetricExporter(), export_interval_millis=5_000
-                )
+                PeriodicExportingMetricReader(ConsoleMetricExporter(), export_interval_millis=5_000)
             )
         # xray and otlp: hosts provide their own reader. No-op here.
 

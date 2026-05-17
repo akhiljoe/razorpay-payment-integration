@@ -29,7 +29,9 @@ ADMIN_KEY = "phase10_admin_key"
 
 @pytest_asyncio.fixture
 async def admin_app(
-    live_pool, razorpay_client: RazorpayClient, fixed_resolver: FixedAmountResolver,
+    live_pool,
+    razorpay_client: RazorpayClient,
+    fixed_resolver: FixedAmountResolver,
 ) -> AsyncIterator[tuple[FastAPI, AsyncMock, RazorpayConfig]]:
     config = RazorpayConfig(
         tenant_id="t_admin",
@@ -95,7 +97,9 @@ async def test_admin_route_403_when_wrong_key(client: httpx.AsyncClient) -> None
 
 @pytest_asyncio.fixture
 async def client_no_admin_key(
-    live_pool, razorpay_client: RazorpayClient, fixed_resolver: FixedAmountResolver,
+    live_pool,
+    razorpay_client: RazorpayClient,
+    fixed_resolver: FixedAmountResolver,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """App with admin_api_key=None: every admin route returns 403 admin_api_disabled."""
     config = RazorpayConfig(
@@ -149,9 +153,7 @@ async def test_reconcile_detects_missing_in_local_db(
             200,
             json={
                 "count": 1,
-                "items": [
-                    {"id": "pay_RZP_ONLY", "amount": 50000, "status": "captured"}
-                ],
+                "items": [{"id": "pay_RZP_ONLY", "amount": 50000, "status": "captured"}],
             },
         )
     )
@@ -171,7 +173,9 @@ async def test_reconcile_detects_missing_in_local_db(
 
 @respx.mock
 async def test_reconcile_detects_amount_mismatch(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, _, config = admin_app
     # Seed a local payment so the join finds something.
@@ -203,9 +207,7 @@ async def test_reconcile_detects_amount_mismatch(
             200,
             json={
                 "count": 1,
-                "items": [
-                    {"id": "pay_AMT_X", "amount": 99999, "status": "captured"}
-                ],
+                "items": [{"id": "pay_AMT_X", "amount": 99999, "status": "captured"}],
             },
         )
     )
@@ -223,7 +225,11 @@ async def test_reconcile_detects_amount_mismatch(
 
 
 async def _insert_event(
-    live_pool, *, tenant_id: str, processing_status: str, event_id_text: str = "evt_X",
+    live_pool,
+    *,
+    tenant_id: str,
+    processing_status: str,
+    event_id_text: str = "evt_X",
 ) -> uuid.UUID:
     from datetime import UTC, datetime
 
@@ -244,11 +250,15 @@ async def _insert_event(
 
 
 async def test_replay_failed_event_returns_pending(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, _, config = admin_app
     event_id = await _insert_event(
-        live_pool, tenant_id=config.tenant_id, processing_status="failed",
+        live_pool,
+        tenant_id=config.tenant_id,
+        processing_status="failed",
         event_id_text="evt_REPLAY_F",
     )
     response = await client.post(
@@ -271,11 +281,15 @@ async def test_replay_failed_event_returns_pending(
 
 
 async def test_replay_dead_event_returns_pending(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, _, config = admin_app
     event_id = await _insert_event(
-        live_pool, tenant_id=config.tenant_id, processing_status="dead",
+        live_pool,
+        tenant_id=config.tenant_id,
+        processing_status="dead",
         event_id_text="evt_REPLAY_D",
     )
     response = await client.post(
@@ -297,11 +311,15 @@ async def test_replay_unknown_event_returns_404(
 
 
 async def test_replay_pending_event_returns_409(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, _, config = admin_app
     event_id = await _insert_event(
-        live_pool, tenant_id=config.tenant_id, processing_status="pending",
+        live_pool,
+        tenant_id=config.tenant_id,
+        processing_status="pending",
         event_id_text="evt_REPLAY_PEND",
     )
     response = await client.post(
@@ -345,7 +363,9 @@ async def _seed_paid_order(live_pool, tenant_id: str, *, with_payment: bool = Tr
 
 
 async def test_retry_fulfillment_paid_order_publishes_sqs(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, stub_sqs, config = admin_app
     order_id = await _seed_paid_order(live_pool, config.tenant_id)
@@ -383,7 +403,9 @@ async def test_retry_fulfillment_unknown_order_returns_404(
 
 
 async def test_retry_fulfillment_wrong_state_returns_409(
-    client: httpx.AsyncClient, admin_app, live_pool,
+    client: httpx.AsyncClient,
+    admin_app,
+    live_pool,
 ) -> None:
     _, _, config = admin_app
     # Seed an order in `created` state which is not eligible.

@@ -55,9 +55,7 @@ _PAYMENT_AUTHORIZED_TERMINAL: frozenset[OrderStatus] = frozenset(
     }
 )
 
-_PAYMENT_FAILED_SKIP: frozenset[OrderStatus] = frozenset(
-    {OrderStatus.FAILED, OrderStatus.REFUNDED}
-)
+_PAYMENT_FAILED_SKIP: frozenset[OrderStatus] = frozenset({OrderStatus.FAILED, OrderStatus.REFUNDED})
 
 _PAYMENT_FAILED_STALE: frozenset[OrderStatus] = frozenset(
     {OrderStatus.PAID, OrderStatus.FULFILLED, OrderStatus.FULFILLMENT_FAILED}

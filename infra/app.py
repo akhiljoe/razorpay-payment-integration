@@ -35,15 +35,11 @@ def main() -> None:
 
     envs: dict = app.node.try_get_context("razorpay:env") or {}
     if not envs:
-        sys.stderr.write(
-            "no razorpay:env context found in cdk.json; nothing to synth\n"
-        )
+        sys.stderr.write("no razorpay:env context found in cdk.json; nothing to synth\n")
         return
 
     ops_email = app.node.try_get_context("razorpay:ops_email")
-    budget_thresholds = (
-        app.node.try_get_context("razorpay:budget_thresholds_usd") or [5, 25, 100]
-    )
+    budget_thresholds = app.node.try_get_context("razorpay:budget_thresholds_usd") or [5, 25, 100]
 
     for env_name, env_cfg in envs.items():
         account = env_cfg.get("account")

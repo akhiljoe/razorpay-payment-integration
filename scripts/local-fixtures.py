@@ -89,9 +89,7 @@ def sqs_client():
     endpoint = os.environ.get("AWS_ENDPOINT_URL") or "http://localhost:4566"
     region = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
     if "localhost" not in endpoint and "127.0.0.1" not in endpoint:
-        raise SystemExit(
-            f"refusing to talk to non-local SQS endpoint {endpoint!r}."
-        )
+        raise SystemExit(f"refusing to talk to non-local SQS endpoint {endpoint!r}.")
     return boto3.client(
         "sqs",
         endpoint_url=endpoint,
@@ -224,7 +222,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Tenant id to upsert. Repeatable. Default: local-dev",
     )
 
-    purge = sub.add_parser("purge", help="Truncate tenant-scoped tables and purge queues")
+    purge = sub.add_parser(
+        "purge", help="Truncate tenant-scoped tables and purge queues"
+    )
     purge.add_argument(
         "--hard",
         action="store_true",

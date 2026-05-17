@@ -66,9 +66,7 @@ def apply(app: cdk.App) -> None:
     early build-out phase where some constructs do not yet exist.
     """
     for entry in SUPPRESSIONS:
-        nag_suppressions = [
-            NagPackSuppression(id=entry["id"], reason=entry["reason"])
-        ]
+        nag_suppressions = [NagPackSuppression(id=entry["id"], reason=entry["reason"])]
         for path in entry["paths"]:
             NagSuppressions.add_resource_suppressions_by_path(
                 app,

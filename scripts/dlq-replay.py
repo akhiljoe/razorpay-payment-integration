@@ -184,7 +184,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             return 0
         match = msgs[args.index]
     if match is None:
-        print(f"no message matched", file=sys.stderr)
+        print("no message matched", file=sys.stderr)
         return 2
     # Pretty-print body if it's JSON.
     body = match.get("Body", "")
@@ -193,15 +193,17 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         body_out = json.dumps(parsed, indent=2)
     except json.JSONDecodeError:
         body_out = body
-    print(json.dumps(
-        {
-            "MessageId": match.get("MessageId"),
-            "Attributes": match.get("Attributes", {}),
-            "MessageAttributes": match.get("MessageAttributes", {}),
-            "BodyParsed": body_out if not body_out.startswith("{") else None,
-        },
-        indent=2,
-    ))
+    print(
+        json.dumps(
+            {
+                "MessageId": match.get("MessageId"),
+                "Attributes": match.get("Attributes", {}),
+                "MessageAttributes": match.get("MessageAttributes", {}),
+                "BodyParsed": body_out if not body_out.startswith("{") else None,
+            },
+            indent=2,
+        )
+    )
     print("--- Body ---")
     print(body_out)
     return 0
@@ -215,7 +217,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
     # Dry-runs are read-only; release immediately so subsequent commands see
     # the messages. Real runs hold the lock for 60s to complete the publish.
     msgs = receive_all(
-        sqs, dlq_url,
+        sqs,
+        dlq_url,
         peek_visibility=60 if not args.dry_run else 5,
         release_after_peek=args.dry_run,
     )
@@ -226,9 +229,13 @@ def cmd_replay(args: argparse.Namespace) -> int:
     for m in targets:
         body = m.get("Body", "")
         attrs = m.get("MessageAttributes", {}) or {}
-        group_id = m.get("Attributes", {}).get("MessageGroupId") or args.group_id or "replayed"
+        group_id = (
+            m.get("Attributes", {}).get("MessageGroupId") or args.group_id or "replayed"
+        )
         dedup_id = args.dedup_prefix + ":" + m.get("MessageId", "?")
-        print(f"replay {m.get('MessageId')} -> {main_name}  group={group_id}  dedup={dedup_id}")
+        print(
+            f"replay {m.get('MessageId')} -> {main_name}  group={group_id}  dedup={dedup_id}"
+        )
         if args.dry_run:
             continue
         sqs.send_message(
@@ -237,9 +244,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
             MessageGroupId=group_id,
             MessageDeduplicationId=dedup_id,
             MessageAttributes={
-                k: {"DataType": v.get("DataType", "String"),
-                    "StringValue": v.get("StringValue", "")}
-                for k, v in attrs.items() if v.get("StringValue") is not None
+                k: {
+                    "DataType": v.get("DataType", "String"),
+                    "StringValue": v.get("StringValue", ""),
+                }
+                for k, v in attrs.items()
+                if v.get("StringValue") is not None
             },
         )
         sqs.delete_message(QueueUrl=dlq_url, ReceiptHandle=m["ReceiptHandle"])
@@ -251,7 +261,8 @@ def cmd_delete(args: argparse.Namespace) -> int:
     _, dlq_name = queue_pair(args.pair)
     url = queue_url(sqs, dlq_name)
     msgs = receive_all(
-        sqs, url,
+        sqs,
+        url,
         peek_visibility=60 if not args.dry_run else 5,
         release_after_peek=args.dry_run,
     )
@@ -307,11 +318,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     group.add_argument("--message-id", default=None)
     rp.add_argument("--dry-run", action="store_true")
     rp.add_argument(
-        "--dedup-prefix", default="replay",
+        "--dedup-prefix",
+        default="replay",
         help="Prefix for the replayed MessageDeduplicationId. Default: 'replay'.",
     )
     rp.add_argument(
-        "--group-id", default=None,
+        "--group-id",
+        default=None,
         help="Override MessageGroupId. Default: derive from original attributes.",
     )
 

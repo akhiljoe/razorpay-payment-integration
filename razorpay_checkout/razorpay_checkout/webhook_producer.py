@@ -143,9 +143,7 @@ def _extract_razorpay_order_id(payload: dict[str, Any], event: str) -> str:
         order_id = None
 
     if not isinstance(order_id, str) or not order_id:
-        raise MalformedPayloadError(
-            f"could not extract razorpay_order_id for event {event!r}"
-        )
+        raise MalformedPayloadError(f"could not extract razorpay_order_id for event {event!r}")
     return order_id
 
 
@@ -177,9 +175,7 @@ class WebhookProducer:
         Producer never writes to Postgres and never calls `OrderService`.
         """
         cid = correlation_id or get_correlation_id() or new_correlation_id()
-        received_at = datetime.now(tz=UTC).isoformat(timespec="milliseconds").replace(
-            "+00:00", "Z"
-        )
+        received_at = datetime.now(tz=UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
         # Step 2: tenant resolution from URL path parameter (only valid source).
         config = self._tenants.get(tenant_id)
@@ -194,9 +190,7 @@ class WebhookProducer:
             if config.webhook_secret_previous is not None
             else None
         )
-        if not verify_webhook_signature(
-            raw_body, header_signature, webhook_secret, previous
-        ):
+        if not verify_webhook_signature(raw_body, header_signature, webhook_secret, previous):
             _log.warning("webhook_signature_mismatch", tenant_id=tenant_id)
             raise SignatureMismatchError(tenant_id)
 

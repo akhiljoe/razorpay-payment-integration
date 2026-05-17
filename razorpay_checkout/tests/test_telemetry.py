@@ -99,9 +99,7 @@ def test_order_state_transition_count_records(in_memory_reader: InMemoryMetricRe
 
 
 def test_reconciliation_mismatch_count_records(in_memory_reader: InMemoryMetricReader) -> None:
-    telemetry.reconciliation_mismatch_count.add(
-        1, {"reason": "amount_mismatch", "tenant_id": "t"}
-    )
+    telemetry.reconciliation_mismatch_count.add(1, {"reason": "amount_mismatch", "tenant_id": "t"})
     assert "reconciliation_mismatch_count" in _metric_names(in_memory_reader)
 
 

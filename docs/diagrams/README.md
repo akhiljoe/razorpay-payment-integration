@@ -11,7 +11,7 @@ Mermaid diagrams describing the system. All render on GitHub directly. Each diag
 
 ## Mermaid quick reference
 
-If you want to edit these, the Mermaid live editor is at https://mermaid.live. Copy-paste a block, edit, paste back.
+If you want to edit these, the Mermaid live editor is at <https://mermaid.live>. Copy-paste a block, edit, paste back.
 
 Common shapes used in these diagrams:
 

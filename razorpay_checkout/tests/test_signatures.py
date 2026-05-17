@@ -63,21 +63,14 @@ def test_previous_secret_fallback_accepts_old_signature() -> None:
     body = b'{"event":"payment.captured"}'
     signature_with_previous = _sign(body, PREVIOUS_SECRET)
     assert (
-        verify_webhook_signature(
-            body, signature_with_previous, WEBHOOK_SECRET, PREVIOUS_SECRET
-        )
+        verify_webhook_signature(body, signature_with_previous, WEBHOOK_SECRET, PREVIOUS_SECRET)
         is True
     )
 
 
 def test_previous_secret_fallback_rejects_invalid_signature() -> None:
     body = b'{"event":"payment.captured"}'
-    assert (
-        verify_webhook_signature(
-            body, "deadbeef" * 8, WEBHOOK_SECRET, PREVIOUS_SECRET
-        )
-        is False
-    )
+    assert verify_webhook_signature(body, "deadbeef" * 8, WEBHOOK_SECRET, PREVIOUS_SECRET) is False
 
 
 def test_no_previous_secret_no_fallback() -> None:
@@ -89,10 +82,7 @@ def test_no_previous_secret_no_fallback() -> None:
 def test_current_secret_wins_when_both_match_current() -> None:
     body = b'{"event":"payment.captured"}'
     signature = _sign(body, WEBHOOK_SECRET)
-    assert (
-        verify_webhook_signature(body, signature, WEBHOOK_SECRET, PREVIOUS_SECRET)
-        is True
-    )
+    assert verify_webhook_signature(body, signature, WEBHOOK_SECRET, PREVIOUS_SECRET) is True
 
 
 def test_bytes_secret_accepted() -> None:

@@ -52,9 +52,7 @@ def sim() -> Any:
     "event_type",
     ["payment.authorized", "payment.captured", "payment.failed"],
 )
-def test_payment_payload_extracts_order_id_at_expected_path(
-    sim: Any, event_type: str
-) -> None:
+def test_payment_payload_extracts_order_id_at_expected_path(sim: Any, event_type: str) -> None:
     payload = sim.build_payload(
         event_type=event_type,
         order_id="order_X",
@@ -207,9 +205,7 @@ async def test_producer_accepts_simulator_output(sim: Any, event_type: str) -> N
     body = sim.serialise_payload(payload)
     signature = sim.sign_body(body, WEBHOOK_SECRET)
 
-    ack = await producer.process(
-        raw_body=body, header_signature=signature, tenant_id="t_sim"
-    )
+    ack = await producer.process(raw_body=body, header_signature=signature, tenant_id="t_sim")
     assert ack.status == "queued"
     sent = stub_sqs.send_message.await_args.kwargs
     assert sent["MessageGroupId"] == "order_DRIFT"
@@ -236,9 +232,7 @@ async def test_producer_accepts_simulator_refund_output(sim: Any) -> None:
     body = sim.serialise_payload(payload)
     signature = sim.sign_body(body, WEBHOOK_SECRET)
 
-    ack = await producer.process(
-        raw_body=body, header_signature=signature, tenant_id="t_sim"
-    )
+    ack = await producer.process(raw_body=body, header_signature=signature, tenant_id="t_sim")
     assert ack.status == "queued"
 
 

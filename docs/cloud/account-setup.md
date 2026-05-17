@@ -11,7 +11,7 @@ One-time manual steps before any `cdk deploy` can run. ~45 minutes total.
 
 ## Step 1: Create the AWS account
 
-1. Go to https://signup.aws.amazon.com.
+1. Go to <https://signup.aws.amazon.com>.
 2. Account name: `razorpay-checkout-prod` (or `razorpay-checkout-dev` for non-prod).
 3. Email: a dedicated alias, e.g. `aws-prod-razorpay@yourdomain.com`.
 4. Set a strong root password (≥20 chars, store in 1Password / Bitwarden).
@@ -45,6 +45,7 @@ You won't use the root account again except for billing and account closure.
 ## Step 4: Pick the workload region
 
 Default for this project: **`ap-south-1` (Mumbai)**. Reasons:
+
 - Razorpay is India-based; latency between Lambda and Razorpay's API is < 50ms.
 - INR-only billing simplification (most regional services price in USD anyway, but networking and S3 transfer are colocated).
 - Compliance: Indian payment data should stay in India by default.

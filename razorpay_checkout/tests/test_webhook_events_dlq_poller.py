@@ -52,9 +52,7 @@ async def test_mark_dead_is_noop_for_unknown_event(live_pool) -> None:
 
 
 def test_envelope_parse_recovers_ids() -> None:
-    body = json.dumps(
-        {"tenant_id": "t1", "event_id": "evt_X", "envelope_version": 1}
-    )
+    body = json.dumps({"tenant_id": "t1", "event_id": "evt_X", "envelope_version": 1})
     parsed = json.loads(body)
     assert parsed["tenant_id"] == "t1"
     assert parsed["event_id"] == "evt_X"

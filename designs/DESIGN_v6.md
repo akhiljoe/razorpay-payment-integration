@@ -27,7 +27,7 @@ Final, current design. Single source of truth. Reflects the system as built. Sup
 
 ## 1. Repository Layout
 
-```
+```text
 razorpay-payment-integration/
 ├── razorpay_checkout/                 # Python library, FastAPI router, Lambda handlers
 │   ├── pyproject.toml
@@ -260,7 +260,7 @@ Core flow (`core.ts`):
 
 Required CSP directives:
 
-```
+```text
 script-src https://checkout.razorpay.com;
 frame-src https://api.razorpay.com;
 ```
@@ -598,7 +598,7 @@ The Consumer commits the DB transaction before publishing to `fulfillment-queue.
 
 Three Lambda functions connected by two SQS FIFO queue pairs.
 
-```
+```text
 Razorpay ──HTTPS──▶ Webhook Producer ──▶ webhook-events.fifo ──▶ Webhook Consumer ──▶ Postgres
    (public)          (public, no DB)          (FIFO + DLQ)          (DB credentials)        │
                                                                                             │

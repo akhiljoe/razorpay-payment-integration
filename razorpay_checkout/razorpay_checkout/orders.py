@@ -89,9 +89,7 @@ def _advisory_lock_key(tenant_id: str, receipt: str) -> int:
     Blake2b 8-byte digest mapped to the signed int64 range so Postgres's
     `bigint` accepts it without overflow.
     """
-    digest = hashlib.blake2b(
-        f"{tenant_id}\x00{receipt}".encode(), digest_size=8
-    ).digest()
+    digest = hashlib.blake2b(f"{tenant_id}\x00{receipt}".encode(), digest_size=8).digest()
     n = int.from_bytes(digest, "big", signed=False)
     if n > _INT64_MAX:
         n -= 1 << 64

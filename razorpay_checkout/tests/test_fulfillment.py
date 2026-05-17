@@ -63,7 +63,9 @@ def _envelope(order_id: str, tenant_id: str, payment_id: str = "pay_X") -> str:
 
 @pytest.fixture
 async def service(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> OrderService:
     return OrderService(
@@ -86,21 +88,24 @@ async def created_order(service: OrderService) -> Any:
 
 
 async def _advance_to(
-    live_pool, service: OrderService, order_id: uuid.UUID,
-    tenant_id: str, target: OrderStatus,
+    live_pool,
+    service: OrderService,
+    order_id: uuid.UUID,
+    tenant_id: str,
+    target: OrderStatus,
 ) -> None:
     chain = {
         OrderStatus.PAID: [OrderStatus.ATTEMPTED, OrderStatus.PAID],
         OrderStatus.FULFILLED: [OrderStatus.ATTEMPTED, OrderStatus.PAID, OrderStatus.FULFILLED],
         OrderStatus.FULFILLMENT_FAILED: [
-            OrderStatus.ATTEMPTED, OrderStatus.PAID, OrderStatus.FULFILLMENT_FAILED
+            OrderStatus.ATTEMPTED,
+            OrderStatus.PAID,
+            OrderStatus.FULFILLMENT_FAILED,
         ],
     }
     async with live_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.fetchrow(
-                "SELECT * FROM orders WHERE id = $1 FOR UPDATE", order_id
-            )
+            await conn.fetchrow("SELECT * FROM orders WHERE id = $1 FOR UPDATE", order_id)
             for step in chain[target]:
                 await service.transition(
                     conn,
@@ -119,12 +124,8 @@ def stub_hook() -> AsyncMock:
 
 
 @pytest.fixture
-async def processor(
-    live_pool, service: OrderService, stub_hook: AsyncMock
-) -> FulfillmentProcessor:
-    return FulfillmentProcessor(
-        pool=live_pool, order_service=service, hook=stub_hook
-    )
+async def processor(live_pool, service: OrderService, stub_hook: AsyncMock) -> FulfillmentProcessor:
+    return FulfillmentProcessor(pool=live_pool, order_service=service, hook=stub_hook)
 
 
 # ---------- Envelope errors ----------
@@ -137,20 +138,24 @@ async def test_malformed_envelope_raises(processor: FulfillmentProcessor) -> Non
 
 async def test_missing_order_id_raises(processor: FulfillmentProcessor) -> None:
     with pytest.raises(FulfillmentEnvelopeError):
-        await processor.process_record(
-            message_body=json.dumps({"tenant_id": "t1"})
-        )
+        await processor.process_record(message_body=json.dumps({"tenant_id": "t1"}))
 
 
 # ---------- Happy path: paid -> fulfilled ----------
 
 
 async def test_paid_order_calls_hook_and_transitions_to_fulfilled(
-    processor: FulfillmentProcessor, live_pool, created_order: Any,
-    db_config: RazorpayConfig, stub_hook: AsyncMock,
+    processor: FulfillmentProcessor,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
+    stub_hook: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, processor._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        processor._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.PAID,
     )
     result = await processor.process_record(
@@ -180,11 +185,17 @@ async def test_paid_order_calls_hook_and_transitions_to_fulfilled(
 
 
 async def test_already_fulfilled_short_circuits_without_hook_call(
-    processor: FulfillmentProcessor, live_pool, created_order: Any,
-    db_config: RazorpayConfig, stub_hook: AsyncMock,
+    processor: FulfillmentProcessor,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
+    stub_hook: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, processor._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        processor._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.FULFILLED,
     )
     result = await processor.process_record(
@@ -198,11 +209,17 @@ async def test_already_fulfilled_short_circuits_without_hook_call(
 
 
 async def test_fulfillment_failed_order_recovers_via_processor(
-    processor: FulfillmentProcessor, live_pool, created_order: Any,
-    db_config: RazorpayConfig, stub_hook: AsyncMock,
+    processor: FulfillmentProcessor,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
+    stub_hook: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, processor._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        processor._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.FULFILLMENT_FAILED,
     )
     result = await processor.process_record(
@@ -213,9 +230,7 @@ async def test_fulfillment_failed_order_recovers_via_processor(
     stub_hook.fulfill.assert_awaited_once()
 
     async with live_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
     assert row["status"] == "fulfilled"
 
 
@@ -223,11 +238,17 @@ async def test_fulfillment_failed_order_recovers_via_processor(
 
 
 async def test_hook_exception_rolls_back_and_reraises(
-    processor: FulfillmentProcessor, live_pool, created_order: Any,
-    db_config: RazorpayConfig, stub_hook: AsyncMock,
+    processor: FulfillmentProcessor,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
+    stub_hook: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, processor._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        processor._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.PAID,
     )
     stub_hook.fulfill = AsyncMock(side_effect=RuntimeError("hook boom"))
@@ -238,9 +259,7 @@ async def test_hook_exception_rolls_back_and_reraises(
         )
 
     async with live_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
     # Rollback: order stays in paid.
     assert row["status"] == "paid"
 
@@ -249,7 +268,8 @@ async def test_hook_exception_rolls_back_and_reraises(
 
 
 async def test_unknown_order_returns_unexpected_state(
-    processor: FulfillmentProcessor, db_config: RazorpayConfig,
+    processor: FulfillmentProcessor,
+    db_config: RazorpayConfig,
     stub_hook: AsyncMock,
 ) -> None:
     result = await processor.process_record(
@@ -263,15 +283,16 @@ async def test_unknown_order_returns_unexpected_state(
 
 
 async def test_attempted_order_skips_with_unexpected_state(
-    processor: FulfillmentProcessor, live_pool, created_order: Any,
-    db_config: RazorpayConfig, stub_hook: AsyncMock,
+    processor: FulfillmentProcessor,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
+    stub_hook: AsyncMock,
 ) -> None:
     # Order is in `created` from fixture; bump only one step to `attempted`.
     async with live_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.fetchrow(
-                "SELECT * FROM orders WHERE id = $1 FOR UPDATE", created_order.id
-            )
+            await conn.fetchrow("SELECT * FROM orders WHERE id = $1 FOR UPDATE", created_order.id)
             await processor._service.transition(
                 conn,
                 order_id=created_order.id,

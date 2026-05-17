@@ -41,7 +41,7 @@ Rationale and tradeoffs documented in `MIGRATION_WRITEUP.md` §5.
 
 ### 1.1 Two-account topology
 
-```
+```text
 razorpay-dev   AWS account (aws-dev@example.com)
 razorpay-prod  AWS account (aws-prod@example.com)
 ```
@@ -144,7 +144,7 @@ Cost of skipping VPC: $0. Cost of VPC + PrivateLink endpoints (the alternative):
 
 ### 2.2 Edge ingress
 
-```
+```text
 Razorpay -> Cloudflare DNS -> API Gateway HTTP API -> Producer Lambda -> SQS
 ```
 
@@ -177,7 +177,7 @@ API Gateway resource policy IP allow-list (free, restricts the webhook endpoint 
     "Resource": "execute-api:/*/POST/payments/webhook/*",
     "Condition": {
       "IpAddress": { "aws:SourceIp": [
-        "203.0.113.10/32", "203.0.113.11/32", "..." 
+        "203.0.113.10/32", "203.0.113.11/32", "..."
       ]}
     }
   }]
@@ -843,178 +843,45 @@ CDK constructs read these flags and conditionally instantiate.
 | Field | Value |
 |---|---|
 | **Trigger** | First security incident detected anywhere OR 100+ MAU OR compliance ask |
-| **Cost delta** | +$3-6/env/mo (CloudTrail event scanning at $4/M events + S3 protection at $0.10/GB scanned). First 30 days free. |
+| **Cost delta** | +$3-6/env/mo (CloudTrail event scanning at $4/M events + VPC Flow Logs scanning at $1/GB) |
 | **Change** | `razorpay:features.guardduty_enabled: true` |
 | **Deploy** | `cd infra && uv run cdk deploy razorpay-{env}-foundation` |
-| **Verification** | AWS Console → GuardDuty → Status `ENABLED`. After 30-day trial, monthly cost visible in Cost Explorer under "Amazon GuardDuty". |
-| **Rollback** | Flip flag, redeploy. GuardDuty disables; findings retained 90 days. |
-| **Findings routing** | GuardDuty publishes to Security Hub if `security_hub_enabled` is also on; otherwise console only. Critical findings also send to ops SNS topic via EventBridge rule. |
+| **Verification** | AWS Console -> GuardDuty -> Detector status `Enabled`. First findings (if any) appear within 24h under Findings. |
+| **Rollback** | Flip flag, redeploy. Detector disables; existing findings retained 90 days. |
+| **Output** | Findings publish to Security Hub if `security_hub_enabled` is also on; SNS alert on HIGH/CRITICAL severity via `ops-page` topic. |
 
-### Enable 6: Security Hub (Compliance Posture)
+### Enable 6: Security Hub (Aggregated Findings)
 
 | Field | Value |
 |---|---|
-| **Trigger** | Compliance audit (SOC2, ISO 27001, PCI) requested |
-| **Cost delta** | +$3-8/env/mo ($0.0010 per security check evaluated; depends on resource count). First 30 days free. |
+| **Trigger** | Enabling 2+ of: GuardDuty, Inspector, Config (aggregated view becomes valuable) OR compliance audit |
+| **Cost delta** | +$3-10/env/mo ($0.0010 per finding ingested + $0.0030 per security check; depends on rule count) |
 | **Change** | `razorpay:features.security_hub_enabled: true` |
 | **Deploy** | `cd infra && uv run cdk deploy razorpay-{env}-foundation` |
-| **Verification** | AWS Console → Security Hub → Standards enabled: AWS Foundational Security Best Practices, CIS AWS Foundations Benchmark. Findings appear within 24h. |
-| **Rollback** | Flip flag, redeploy. Standards subscriptions cancel; findings retained 90 days. |
-| **Optional** | PCI DSS standard can be enabled separately by setting `security_hub_pci: true`; adds ~$2-4/env/mo for additional checks |
+| **Verification** | AWS Console -> Security Hub -> Summary shows finding counts from enabled integrations. AWS Foundational Security Best Practices standard enabled by default. |
+| **Rollback** | Flip flag, redeploy. Aggregation stops; underlying findings remain in source services. |
+| **Standards enabled** | `AWS Foundational Security Best Practices v1.0.0` (always); `CIS AWS Foundations Benchmark v1.4.0` (opt-in via context). |
 
-### Enable 7: RDS / Aurora Migration (off Neon, into AWS-native)
-
-This is the largest of the upgrades. Touches multiple services together: RDS or Aurora Serverless v2, RDS Proxy, VPC, PrivateLink endpoints, Lambdas move into the VPC.
+### Enable 7: RDS in VPC (Replace Neon with Managed Postgres)
 
 | Field | Value |
 |---|---|
-| **Trigger** | 100k+ tx/mo sustained OR Neon Launch plan exhausted OR PCI requires AWS-native data layer OR customer enterprise contract requires it |
-| **Cost delta** | +$300-400/mo combined (Aurora $86 + RDS Proxy $30 + VPC + PrivateLink endpoints $264) |
-| **Change** | `razorpay:features.rds_in_vpc_enabled: true`. Triggers the full Stage 2 architecture. |
-| **Deploy procedure** | See "Migration Playbook" below. This is a one-weekend operation, not a single `cdk deploy`. |
-| **Rollback** | Document but do not depend on. Once data is migrated to RDS, rolling back to Neon means a second `pg_dump`/`pg_restore`. Plan to commit to the migration once started. |
+| **Trigger** | Neon free-tier limits exceeded (>100k rows or >1 GB) OR data residency / VPC-only network posture required OR cross-region read replicas needed |
+| **Cost delta** | +$25-90/env/mo (db.t4g.micro $13 + storage $5 + NAT GW $32 + Interface Endpoints $22; Free Tier covers t4g.micro for 12 months on new accounts) |
+| **Change** | `razorpay:features.rds_in_vpc_enabled: true`. Triggers VPC + private subnets + NAT GW + Interface Endpoints (SQS, Secrets Manager, Logs, Monitoring). |
+| **Deploy** | `cd infra && uv run cdk deploy razorpay-{env}-foundation razorpay-{env}-payments`. Migration runbook in `docs/runbooks/neon-to-rds-cutover.md`. |
+| **Verification** | RDS console shows instance status `Available`. Consumer + Fulfillment Lambdas show VPC config in Lambda console. `aws lambda invoke` round-trip latency increases by ~50-80 ms (cold) due to ENI attachment. |
+| **Rollback** | Documented in cutover runbook; non-trivial (data migration back to Neon). Flip flag alone removes VPC config but Lambdas lose DB access. |
+| **Network posture change** | Lambdas move from public to private subnets. Egress via NAT GW. All AWS API calls via Interface Endpoints. No DB credentials over public internet. |
 
-**Migration Playbook (one weekend, with dev dry run):**
-
-```mermaid
-flowchart TB
-    Day1[Day 1: Staging dry run]
-    Day1 --> S1[Set rds_in_vpc_enabled=true in dev]
-    S1 --> S2[cdk deploy razorpay-dev-foundation]
-    S2 --> S3[cdk deploy razorpay-dev-payments]
-    S3 --> S4[Provisions VPC, PrivateLink endpoints, Aurora Serverless v2, RDS Proxy. Lambdas redeploy into VPC.]
-    S4 --> S5[pg_dump from Neon dev, pg_restore to RDS dev via bastion or one-shot ECS task]
-    S5 --> S6[Update db DSN secret value to point at RDS Proxy endpoint]
-    S6 --> S7[Lambdas refresh secret on next cold start; smoke test]
-    S7 --> Day2[Day 2: Production cutover during maintenance window]
-    Day2 --> P1[Same sequence in prod]
-    P1 --> P2[Verify, monitor for 24h]
-    P2 --> P3[Decommission Neon prod after 7 days]
-```
-
-**Estimated downtime in prod cutover:** 30-60 minutes during the `pg_dump`/`pg_restore` window. Schedule for low-traffic period (e.g., 2 AM IST).
-
-**What activates with this toggle:**
-
-| Resource | Reason |
-|---|---|
-| VPC + 2 private app subnets + 2 data subnets in 2 AZs | Aurora requires VPC; Lambdas must join to reach it |
-| 9 PrivateLink Interface Endpoints (SQS, Secrets, KMS, Logs, Metrics, STS, SSM, X-Ray, ECR) | VPC-resident Lambdas reach AWS APIs without internet egress |
-| Aurora Serverless v2 PostgreSQL cluster (min 0.5 ACU, max 4 ACU) | Replaces Neon |
-| RDS Proxy in front of Aurora | Connection pooling for Lambda invocation pattern |
-| Consumer + Fulfillment + 3 monitor Lambdas in private subnets | Required to reach RDS Proxy |
-| `db` KMS CMK now in active use | Encrypts Aurora storage |
-| Producer Lambda stays **outside** VPC | Unchanged; 500 ms SLA path is unaffected |
-
-### Enable 8: Aurora Global Database (Warm DR)
+### Enable 8: Aurora Global Database (Multi-Region DR)
 
 | Field | Value |
 |---|---|
-| **Trigger** | RTO requirement reduced to < 1 hour (compared to current 4-hour target) OR regulator requires geographic redundancy |
-| **Prerequisite** | Enable 7 (RDS/Aurora migration) must be done first |
-| **Cost delta** | +$80-200/mo (warm replica in `ap-southeast-1` at min 0.5 ACU; cross-region data transfer ~$0.02/GB) |
-| **Change** | `razorpay:features.aurora_global_db_enabled: true` |
-| **Deploy** | `cd infra && uv run cdk deploy razorpay-prod-payments` |
-| **Verification** | Aurora console shows Global Cluster with primary in `ap-south-1`, secondary in `ap-southeast-1`. Replica lag < 1 second steady-state. |
-| **Failover drill cadence** | Quarterly. Operator runbook in `docs/runbooks/dr-failover.md` (created when this toggle goes live). |
-| **Rollback** | Flip flag, redeploy. Replica deletes; primary unaffected. |
-
-### Enable 9: Neon Launch Plan Upgrade (database scale, not AWS toggle)
-
-| Field | Value |
-|---|---|
-| **Trigger** | Neon free tier exhausted (>400 MB storage OR >80 compute hours/mo) |
-| **Cost delta** | +$19/env/mo ($38 combined) |
-| **Change** | In the Neon dashboard, upgrade the project plan to Launch. No CDK change. |
-| **Verification** | Neon console shows plan = Launch; storage cap raised to 10 GB; compute hours cap raised |
-| **Rollback** | Downgrade plan in Neon dashboard (only possible if usage drops back below free tier limits) |
-| **Effect on AWS** | None. DSN unchanged. Lambdas continue to operate. |
-
-### Enable 10: Per-Tenant Fulfillment Hook Outbound AWS Permissions
-
-| Field | Value |
-|---|---|
-| **Trigger** | A tenant's `FulfillmentHook` needs to publish to a tenant-owned SNS topic, write to a tenant S3 bucket, or call any other AWS API |
-| **Cost delta** | $0 (only IAM policy expansion) |
-| **Change** | Edit `designs/iam-policies/fulfillment.json` to add a per-tenant ARN scope; regenerate CDK; `cdk deploy razorpay-{env}-payments` |
-| **Verification** | Fulfillment Lambda can perform the tenant action without `AccessDenied` |
-| **Rollback** | Revert policy edit, redeploy |
-
-### Enablement order if multiple triggers fire at once
-
-Recommended ordering (some have dependencies):
-
-1. **WAF first** (most common first trigger; cheap; no dependencies)
-2. **Provisioned Concurrency** (independent; cheap)
-3. **Neon Launch plan** (independent; doesn't touch CDK)
-4. **GuardDuty** (independent; cheap)
-5. **Security Hub** (works best with GuardDuty + Inspector + Config feeding it)
-6. **Inspector** (independent)
-7. **AWS Config** (independent but slow to evaluate; turn on with Security Hub)
-8. **RDS/Aurora migration** (large; weekend operation; do dev first)
-9. **Aurora Global DB** (depends on #8)
-
-### Cost ladder summary
-
-| Configuration | Combined monthly cost |
-|---|---|
-| Lite (today) | ~$14 |
-| Lite + WAF | ~$36 |
-| Lite + WAF + Provisioned Concurrency | ~$52 |
-| Lite + WAF + Inspector + GuardDuty + Security Hub | ~$60 |
-| Lite + WAF + all compliance services (Inspector + Config + GuardDuty + Security Hub) | ~$80-100 |
-| All of the above + Neon Launch plan | ~$120-140 |
-| All of the above + RDS/Aurora migration (Stage 2) | ~$400-500 |
-| All of the above + Aurora Global DB | ~$500-700 |
-
-Each step is a feature toggle and a `cdk deploy`. No code change required.
-
----
-
-## Risk Register
-
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|---|
-| 1 | Razorpay rotates source IPs without notice | Medium | High | Monthly runbook check; alarm on Razorpay IP rule hit count = 0 |
-| 2 | Neon free tier exhausted earlier than projected | Medium | Low | Graduate to Launch plan; trivial |
-| 3 | Neon outage during business hours | Low | High | Razorpay retries cover short outages; longer triggers DR procedure |
-| 4 | Producer cold start exceeds 500 ms without Provisioned Concurrency | Medium | High (SLA breach) | Cold-start budget measured at ~200 ms; if breached, flip `provisioned_concurrency_enabled` |
-| 5 | OIDC trust policy misconfigured allowing unauthorized repo | Low | Critical | Trust policy `StringLike` on full repo path; cdk-nag rule; quarterly review |
-| 6 | KMS key deletion by mistake | Low | Critical (data unrecoverable) | 30-day mandatory window; CloudWatch alarm on `kms:ScheduleKeyDeletion` |
-| 7 | Alembic migration locks Neon for >30 s | Medium | Medium | `lock_timeout=5s` on migration session; pre-deploy validation |
-| 8 | CloudFront cache poisoning of `/latest/widget.js` | Low | Critical | Versioned paths; SRI hash required; CloudFront OAC; immutable cache |
-| 9 | Object Lock retention conflicts with future legal deletion need | Low | Medium | 7-year retention matches Indian payment record-keeping requirements; consult legal before changing |
-| 10 | Cost-amplification attack on webhook URL | Medium | Medium | Producer Reserved Concurrency = 50 caps blast radius; alarm at 1000/min triggers WAF |
-
----
-
-## Assumptions and Implementation Verification Checklist
-
-Each assumption to be resolved before the affected phase.
-
-| # | Item | Assumption | Where to verify | Owner |
-|---|---|---|---|---|
-| 1 | DLQ pollers execution model | SQS-triggered Lambdas (not EventBridge); re-drive is manual via `scripts/dlq-replay.py` | `razorpay_checkout/lambdas/*_dlq_poller.py` handler signatures | Akhil |
-| 2 | Read-only PostgreSQL role | `razorpay_ro` exists or added in Alembic `0008` before Phase 4 | `razorpay_checkout/razorpay_checkout/migrations/versions/` | Akhil |
-| 3 | Tenant fulfillment hook AWS perms | No per-tenant AWS API access needed | `razorpay_checkout/fulfillment.py` + any tenant hook impls | Akhil |
-| 4 | Custom domain ownership | **RESOLVED:** example.com owned, DNS at Cloudflare | Cloudflare console | Akhil |
-| 5 | Razorpay IP allow-list source | Razorpay publishes IP range in public docs | https://razorpay.com/docs/webhooks/ | Akhil |
-| 6 | Tenant count and growth | **RESOLVED:** 2 fixed (operator's own websites), no planned growth | Confirmed | Akhil |
-| 7 | GitHub Environments configured | `dev` and `prod` Environments exist with required reviewers on prod | GitHub Settings | Akhil |
-| 8 | Cost ceiling | $14/mo idle is firm; $36/mo when WAF on is firm | Confirmed | Akhil |
-| 9 | DR posture | 4-hour RTO acceptable | Confirmed | Akhil |
-| 10 | PCI scope | Razorpay holds cardholder data; we hold metadata only | Razorpay docs + internal compliance | Akhil |
-| 11 | Stale Paid Monitor scheduling | EventBridge `Schedule.rate(Duration.minutes(5))` targets the Lambda | `infra/stacks/payments.py` after deploy | Akhil |
-| 12 | Tenant secret JSON shape | `{ key_id, key_secret, webhook_secret, webhook_secret_previous? }` | `razorpay_checkout/{config,tenants}.py` | Akhil |
-| 13 | SQS FIFO High Throughput Mode in ap-south-1 | Available and cost-neutral | AWS docs | Akhil |
-| 14 | Lambda base image | **RESOLVED:** `public.ecr.aws/lambda/python:3.12` (x86_64) | ECR Public | Akhil |
-| 15 | Razorpay 500 ms SLA behavior on timeout | Retries with backoff; may use new event_id | Razorpay docs | Akhil |
-| 16 | Neon region availability | `aws-ap-south-1` available | Neon console | Akhil |
-| 17 | Neon latency from ap-south-1 Lambdas | <50 ms p95 acceptable | Measure during Phase 4 smoke | Akhil |
-| 18 | S3 Object Lock retention 7 years | Acceptable for compliance | Internal | Akhil |
-
----
-
-## Conflict with DESIGN_v6.md: None
-
-This architecture serves DESIGN_v6.md §11 "Free Track posture" exactly. The Producer-Consumer split, the IAM security model, the SQS FIFO contract, the correlation ID propagation, and the state machine are all preserved unchanged. Feature toggles for the deferred security services do not affect application behavior.
+| **Trigger** | RPO requirement < 1 min OR multi-region active-active OR compliance ask for cross-region failover |
+| **Cost delta** | +$200-400/env/mo (Aurora Serverless v2 primary + read replica in second region + cross-region replication bytes) |
+| **Change** | `razorpay:features.aurora_global_db_enabled: true`. Requires `rds_in_vpc_enabled: true` as prerequisite. |
+| **Deploy** | `cd infra && uv run cdk deploy razorpay-{env}-foundation razorpay-{env}-payments`. Aurora cluster replaces RDS instance. Migration runbook in `docs/runbooks/rds-to-aurora-cutover.md`. |
+| **Verification** | RDS console shows Global Cluster with primary + secondary region. Replication lag metric < 1 sec. Failover test from secondary region succeeds. |
+| **Rollback** | Documented in cutover runbook; non-trivial. Disable secondary region first, then promote primary, then flip flag. |
+| **Network posture** | Inherits VPC posture from Enable 7. Secondary region requires its own VPC with peering or Transit Gateway. |

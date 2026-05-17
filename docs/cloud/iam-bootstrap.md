@@ -8,7 +8,7 @@ How IAM roles, policies, and SSM access are structured for this project.
 
 ## Identity model
 
-```
+```text
 Operator (human)
   └─ SSO session
        └─ AssumeRole → RazorpayAdmin (4-hour TTL)
@@ -40,6 +40,7 @@ The producer holds **zero database credentials**. Required permissions:
 - Optional: `xray:PutTraceSegments` if OTel exporter = xray.
 
 Explicit deny on:
+
 - All RDS / DynamoDB actions.
 - `sqs:ReceiveMessage` (producer never reads queues).
 - `sqs:*` on the fulfillment queue.

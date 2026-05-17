@@ -89,9 +89,7 @@ def build_webhook_envelope(
     }
     body = json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
     if len(body.encode("utf-8")) > SQS_MAX_BODY_BYTES:
-        raise MessageTooLargeError(
-            f"envelope is {len(body)} bytes, exceeds SQS 256 KB cap"
-        )
+        raise MessageTooLargeError(f"envelope is {len(body)} bytes, exceeds SQS 256 KB cap")
     return body
 
 

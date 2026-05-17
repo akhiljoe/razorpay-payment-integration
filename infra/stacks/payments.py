@@ -24,16 +24,13 @@ SQS / Lambda config rationale see Section 13 (metrics) and Section 6
 from __future__ import annotations
 
 import aws_cdk as cdk
-import aws_cdk.aws_ecr as ecr
 import aws_cdk.aws_events as events
 import aws_cdk.aws_events_targets as events_targets
 import aws_cdk.aws_iam as iam
 import aws_cdk.aws_kms as kms
 import aws_cdk.aws_lambda as lambda_
 import aws_cdk.aws_lambda_event_sources as lambda_sources
-import aws_cdk.aws_logs as logs
 import aws_cdk.aws_secretsmanager as secretsmanager
-import aws_cdk.aws_sns as sns
 import aws_cdk.aws_sqs as sqs
 from constructs import Construct
 
@@ -241,7 +238,9 @@ class PaymentsStack(cdk.Stack):
             tracing=lambda_.Tracing.ACTIVE,
             environment=common_env,
             log_group=foundation.log_groups["webhook-consumer"],
-            description="Drains webhook-events.fifo, runs state transitions + publishes fulfillment.",
+            description=(
+                "Drains webhook-events.fifo, runs state transitions" " + publishes fulfillment."
+            ),
         )
 
         self.fulfillment_fn = lambda_.DockerImageFunction(
@@ -302,9 +301,7 @@ class PaymentsStack(cdk.Stack):
             targets=[
                 events_targets.LambdaFunction(
                     self.consumer_fn,
-                    event=events.RuleTargetInput.from_object(
-                        {"trigger": "stale_paid_monitor"}
-                    ),
+                    event=events.RuleTargetInput.from_object({"trigger": "stale_paid_monitor"}),
                 ),
             ],
         )
@@ -369,8 +366,6 @@ class PaymentsStack(cdk.Stack):
                 iam.ManagedPolicy.from_aws_managed_policy_name(
                     "service-role/AWSLambdaBasicExecutionRole"
                 ),
-                iam.ManagedPolicy.from_aws_managed_policy_name(
-                    "AWSXRayDaemonWriteAccess"
-                ),
+                iam.ManagedPolicy.from_aws_managed_policy_name("AWSXRayDaemonWriteAccess"),
             ],
         )

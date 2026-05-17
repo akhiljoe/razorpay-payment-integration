@@ -29,9 +29,7 @@ def test_set_then_get_round_trip() -> None:
 
 def test_new_correlation_id_is_uuid4_format() -> None:
     value = correlation.new_correlation_id()
-    pattern = re.compile(
-        r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-    )
+    pattern = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     assert pattern.match(value), value
 
 

@@ -30,7 +30,7 @@ _log = get_logger("razorpay_checkout.db")
 def _normalise_dsn(dsn: str) -> str:
     """asyncpg does not accept the `+asyncpg` SQLAlchemy driver suffix."""
     if dsn.startswith("postgresql+asyncpg://"):
-        return "postgresql://" + dsn[len("postgresql+asyncpg://"):]
+        return "postgresql://" + dsn[len("postgresql+asyncpg://") :]
     return dsn
 
 

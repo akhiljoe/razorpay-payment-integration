@@ -46,9 +46,7 @@ def _captured_payload() -> bytes:
             "id": "evt_ROUTE_1",
             "event": "payment.captured",
             "payload": {
-                "payment": {
-                    "entity": {"order_id": "order_ROUTE_1", "id": "pay_X", "amount": 50000}
-                }
+                "payment": {"entity": {"order_id": "order_ROUTE_1", "id": "pay_X", "amount": 50000}}
             },
         }
     ).encode("utf-8")

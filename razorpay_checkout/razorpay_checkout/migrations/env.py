@@ -27,7 +27,7 @@ def _resolve_db_url() -> str:
     if raw is None:
         raw = config.get_main_option("sqlalchemy.url") or ""
     if raw.startswith("postgresql://"):
-        raw = "postgresql+asyncpg://" + raw[len("postgresql://"):]
+        raw = "postgresql+asyncpg://" + raw[len("postgresql://") :]
     if not raw:
         raise RuntimeError("DATABASE_URL not set and no fallback sqlalchemy.url configured.")
     return raw

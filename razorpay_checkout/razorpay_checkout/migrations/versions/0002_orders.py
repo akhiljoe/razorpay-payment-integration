@@ -4,6 +4,7 @@ Revision ID: 0002_orders
 Revises: 0001_tenants
 Create Date: 2026-05-11
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

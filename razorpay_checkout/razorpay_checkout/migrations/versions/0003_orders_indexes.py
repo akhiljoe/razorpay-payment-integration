@@ -4,6 +4,7 @@ Revision ID: 0003_orders_indexes
 Revises: 0002_orders
 Create Date: 2026-05-11
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

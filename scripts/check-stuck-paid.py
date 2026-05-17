@@ -43,7 +43,7 @@ def _load_env() -> None:
 
 def _normalise_dsn(dsn: str) -> str:
     if dsn.startswith("postgresql+asyncpg://"):
-        return "postgresql://" + dsn[len("postgresql+asyncpg://"):]
+        return "postgresql://" + dsn[len("postgresql+asyncpg://") :]
     return dsn
 
 
@@ -74,7 +74,9 @@ def _print_table(rows: list[dict]) -> None:
         print("no stuck-paid orders")
         return
     print(f"\n{len(rows)} stuck-paid order(s):\n")
-    print(f"{'paid_at':30} {'stuck_for':18} {'tenant':16} {'razorpay_order_id':22} {'correlation_id':40}")
+    print(
+        f"{'paid_at':30} {'stuck_for':18} {'tenant':16} {'razorpay_order_id':22} {'correlation_id':40}"
+    )
     print("-" * 130)
     for r in rows:
         print(
@@ -89,15 +91,30 @@ def _print_table(rows: list[dict]) -> None:
 def _print_csv(rows: list[dict]) -> None:
     w = csv.writer(sys.stdout)
     w.writerow(
-        ["paid_at", "stuck_for", "tenant_id", "razorpay_order_id",
-         "receipt", "amount", "correlation_id", "order_id"]
+        [
+            "paid_at",
+            "stuck_for",
+            "tenant_id",
+            "razorpay_order_id",
+            "receipt",
+            "amount",
+            "correlation_id",
+            "order_id",
+        ]
     )
     for r in rows:
-        w.writerow([
-            r["paid_at"], r["stuck_for"], r["tenant_id"],
-            r["razorpay_order_id"], r["receipt"], r["amount"],
-            r["correlation_id"], r["id"],
-        ])
+        w.writerow(
+            [
+                r["paid_at"],
+                r["stuck_for"],
+                r["tenant_id"],
+                r["razorpay_order_id"],
+                r["receipt"],
+                r["amount"],
+                r["correlation_id"],
+                r["id"],
+            ]
+        )
 
 
 async def amain(args: argparse.Namespace) -> int:

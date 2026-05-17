@@ -3,6 +3,7 @@
 Error or symptom → fix index. For deep incident response, see [`docs/runbooks/`](docs/runbooks/).
 
 Each entry tagged:
+
 - **Hit** — we encountered this during development; the fix is documented in DESIGN_v6 Section 17.
 - **Predicted** — invariant in CLAUDE.md; haven't hit it but it's in the design.
 
@@ -12,7 +13,7 @@ Each entry tagged:
 
 ### `uv: command not found` (Hit)
 
-uv isn't on PATH. Install: https://docs.astral.sh/uv/. After install, restart your terminal so PATH refreshes.
+uv isn't on PATH. Install: <https://docs.astral.sh/uv/>. After install, restart your terminal so PATH refreshes.
 
 ### `cdk: program not found` even though `npm install -g aws-cdk` worked (Hit)
 
@@ -53,6 +54,7 @@ The `.env` file has AWS values but they're not in `os.environ` for aioboto3. Eit
 
 - Make sure `example/backend/main.py` has the `.env` lift block at the top (it should, since Phase 13).
 - Or export AWS vars in the shell before `uvicorn`:
+
   ```bash
   export AWS_ENDPOINT_URL=http://localhost:4566
   export AWS_DEFAULT_REGION=ap-south-1
@@ -68,11 +70,13 @@ The `.env` file has AWS values but they're not in `os.environ` for aioboto3. Eit
 
 Razorpay rejected the API key. Two scenarios:
 
-1. **Placeholder Razorpay keys in `.env`** (`rzp_test_REPLACE_ME`). Replace with real test keys from https://dashboard.razorpay.com → Settings → API Keys.
+1. **Placeholder Razorpay keys in `.env`** (`rzp_test_REPLACE_ME`). Replace with real test keys from <https://dashboard.razorpay.com> → Settings → API Keys.
 2. **Stale `RAZORPAY_KEY_ID` exported in your shell** overriding the `.env` value (Section 17.10). Run:
+
    ```bash
    for v in $(env | grep -E '^RAZORPAY_' | cut -d= -f1); do unset "$v"; done
    ```
+
    Restart uvicorn from the same shell.
 
 Diagnose:
@@ -236,6 +240,7 @@ Backend or pump not responding. Open browser DevTools → Network tab → look a
 ### `/dev/shop` modal says "International cards not supported" (Hit)
 
 Razorpay test account is India-only and refusing the test card 4111... Use:
+
 - **UPI** tab → `success@razorpay`
 - **Netbanking** → any bank → Success simulator button
 - Domestic card: `5267 3181 8797 5449` Mastercard

@@ -32,9 +32,7 @@ async def _insert_paid_order(pool, *, tenant_id: str, paid_at: datetime) -> uuid
 
 async def test_fresh_paid_order_is_not_stale(live_pool) -> None:
     now = datetime.now(tz=UTC)
-    await _insert_paid_order(
-        live_pool, tenant_id="t_phase5", paid_at=now - timedelta(minutes=1)
-    )
+    await _insert_paid_order(live_pool, tenant_id="t_phase5", paid_at=now - timedelta(minutes=1))
     stale = await find_stale_paid_orders(live_pool, threshold_minutes=5)
     assert stale == []
 

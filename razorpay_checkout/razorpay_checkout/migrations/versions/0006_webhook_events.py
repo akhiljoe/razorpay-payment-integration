@@ -4,6 +4,7 @@ Revision ID: 0006_webhook_events
 Revises: 0005_refunds
 Create Date: 2026-05-11
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -42,9 +43,7 @@ def upgrade() -> None:
         "ON webhook_events (tenant_id, processing_status);"
     )
     op.execute("CREATE INDEX webhook_events_received_at_idx ON webhook_events (received_at);")
-    op.execute(
-        "CREATE INDEX webhook_events_correlation_id_idx ON webhook_events (correlation_id);"
-    )
+    op.execute("CREATE INDEX webhook_events_correlation_id_idx ON webhook_events (correlation_id);")
 
 
 def downgrade() -> None:

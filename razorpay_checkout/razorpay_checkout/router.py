@@ -45,18 +45,14 @@ payments_router = APIRouter()
 def get_config(request: Request) -> RazorpayConfig:
     config = getattr(request.app.state, "razorpay_config", None)
     if config is None:
-        raise RuntimeError(
-            "RazorpayConfig is not registered on app.state.razorpay_config"
-        )
+        raise RuntimeError("RazorpayConfig is not registered on app.state.razorpay_config")
     return config  # type: ignore[no-any-return]
 
 
 def get_order_service(request: Request) -> OrderService:
     service = getattr(request.app.state, "order_service", None)
     if service is None:
-        raise RuntimeError(
-            "OrderService is not registered on app.state.order_service"
-        )
+        raise RuntimeError("OrderService is not registered on app.state.order_service")
     return service  # type: ignore[no-any-return]
 
 
@@ -163,27 +159,19 @@ async def verify_callback(
         payload.razorpay_signature,
         config.key_secret.get_secret_value(),
     ):
-        body = VerifyCallbackResponse(
-            verified=False, order_id="", reason="signature_mismatch"
-        )
+        body = VerifyCallbackResponse(verified=False, order_id="", reason="signature_mismatch")
         return JSONResponse(status_code=400, content=body.model_dump())
 
-    record = await service.get_by_razorpay_order_id(
-        payload.razorpay_order_id, config.tenant_id
-    )
+    record = await service.get_by_razorpay_order_id(payload.razorpay_order_id, config.tenant_id)
     if record is None:
-        return VerifyCallbackResponse(
-            verified=False, order_id="", reason="order_not_found"
-        )
+        return VerifyCallbackResponse(verified=False, order_id="", reason="order_not_found")
 
     if record.status == OrderStatus.FAILED:
         return VerifyCallbackResponse(
             verified=False, order_id=str(record.id), reason="terminal_failed"
         )
 
-    return VerifyCallbackResponse(
-        verified=True, order_id=str(record.id), reason=None
-    )
+    return VerifyCallbackResponse(verified=True, order_id=str(record.id), reason=None)
 
 
 # ---------- POST /webhook/{tenant_id} (Webhook Producer) ----------
@@ -200,9 +188,7 @@ from razorpay_checkout.webhook_producer import (  # noqa: E402
 def get_webhook_producer(request: Request) -> WebhookProducer:
     producer = getattr(request.app.state, "webhook_producer", None)
     if producer is None:
-        raise RuntimeError(
-            "WebhookProducer is not registered on app.state.webhook_producer"
-        )
+        raise RuntimeError("WebhookProducer is not registered on app.state.webhook_producer")
     return producer  # type: ignore[no-any-return]
 
 
@@ -243,9 +229,7 @@ async def webhook(
     except PublishFailureError as exc:
         # Producer could not publish to SQS. Tell Razorpay to retry.
         _log.error("webhook_route_503", reason=exc.reason)
-        return JSONResponse(
-            status_code=503, content={"detail": "queue_unavailable"}
-        )
+        return JSONResponse(status_code=503, content={"detail": "queue_unavailable"})
 
     return JSONResponse(
         status_code=200,
@@ -365,9 +349,7 @@ async def replay_event(
             config.tenant_id,
         )
         if existing is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="event_not_found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event_not_found")
         previous_status: str = existing["processing_status"]
         if previous_status not in ("failed", "dead"):
             raise HTTPException(
@@ -426,9 +408,7 @@ async def retry_fulfillment(
             config.tenant_id,
         )
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="order_not_found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="order_not_found")
         order_status: str = row["status"]
         if order_status not in ("paid", "fulfillment_failed"):
             raise HTTPException(

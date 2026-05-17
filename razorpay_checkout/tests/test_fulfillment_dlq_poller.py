@@ -22,7 +22,9 @@ pytestmark = pytest.mark.requires_db
 
 @pytest.fixture
 async def service(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> OrderService:
     return OrderService(
@@ -44,9 +46,7 @@ async def paid_order(live_pool, service: OrderService) -> Any:
         record = await service.create_or_get(CreateOrderRequest(receipt="r-dlq-1"))
     async with live_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.fetchrow(
-                "SELECT * FROM orders WHERE id = $1 FOR UPDATE", record.id
-            )
+            await conn.fetchrow("SELECT * FROM orders WHERE id = $1 FOR UPDATE", record.id)
             for step in (OrderStatus.ATTEMPTED, OrderStatus.PAID):
                 await service.transition(
                     conn,
@@ -92,15 +92,21 @@ async def test_already_fulfillment_failed_is_noop(
 ) -> None:
     # First call transitions.
     await mark_fulfillment_failed(
-        live_pool, service,
-        order_id=paid_order.id, tenant_id=paid_order.tenant_id,
-        reason="first", message_id="msg_1",
+        live_pool,
+        service,
+        order_id=paid_order.id,
+        tenant_id=paid_order.tenant_id,
+        reason="first",
+        message_id="msg_1",
     )
     # Second call no-ops.
     transitioned = await mark_fulfillment_failed(
-        live_pool, service,
-        order_id=paid_order.id, tenant_id=paid_order.tenant_id,
-        reason="second", message_id="msg_2",
+        live_pool,
+        service,
+        order_id=paid_order.id,
+        tenant_id=paid_order.tenant_id,
+        reason="second",
+        message_id="msg_2",
     )
     assert transitioned is False
 
@@ -114,13 +120,14 @@ async def test_already_fulfillment_failed_is_noop(
     assert count == 1
 
 
-async def test_unknown_order_is_noop(
-    live_pool, service: OrderService
-) -> None:
+async def test_unknown_order_is_noop(live_pool, service: OrderService) -> None:
     transitioned = await mark_fulfillment_failed(
-        live_pool, service,
-        order_id=uuid.uuid4(), tenant_id="t_phase5",
-        reason="missing", message_id="msg_X",
+        live_pool,
+        service,
+        order_id=uuid.uuid4(),
+        tenant_id="t_phase5",
+        reason="missing",
+        message_id="msg_X",
     )
     assert transitioned is False
 
@@ -131,9 +138,7 @@ async def test_order_in_unexpected_state_is_noop(
     # Advance to fulfilled, which is unexpected for the DLQ entry path.
     async with live_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.fetchrow(
-                "SELECT * FROM orders WHERE id = $1 FOR UPDATE", paid_order.id
-            )
+            await conn.fetchrow("SELECT * FROM orders WHERE id = $1 FOR UPDATE", paid_order.id)
             await service.transition(
                 conn,
                 order_id=paid_order.id,
@@ -143,8 +148,11 @@ async def test_order_in_unexpected_state_is_noop(
             )
 
     transitioned = await mark_fulfillment_failed(
-        live_pool, service,
-        order_id=paid_order.id, tenant_id=paid_order.tenant_id,
-        reason="unexpected", message_id="msg_U",
+        live_pool,
+        service,
+        order_id=paid_order.id,
+        tenant_id=paid_order.tenant_id,
+        reason="unexpected",
+        message_id="msg_U",
     )
     assert transitioned is False

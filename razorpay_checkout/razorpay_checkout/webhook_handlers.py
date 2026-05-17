@@ -268,9 +268,7 @@ async def handle_refund_processed(ctx: HandlerContext) -> _HandlerOutcome:
             razorpay_refund_id=razorpay_refund_id,
             razorpay_payment_id=razorpay_payment_id,
         )
-        return _HandlerOutcome(
-            SkipDecision.PROCEED, None, event_already_marked=True
-        )
+        return _HandlerOutcome(SkipDecision.PROCEED, None, event_already_marked=True)
 
     payment_id = payment_row["id"]
 
@@ -363,13 +361,9 @@ def _refund_entity(payload: dict[str, Any]) -> dict[str, Any]:
 def _razorpay_order_id(payload: dict[str, Any], event: str) -> str:
     inner = payload.get("payload", {})
     if event.startswith("payment."):
-        return str(
-            inner.get("payment", {}).get("entity", {}).get("order_id", "")
-        )
+        return str(inner.get("payment", {}).get("entity", {}).get("order_id", ""))
     if event.startswith("refund."):
-        return str(
-            inner.get("refund", {}).get("entity", {}).get("order_id", "")
-        )
+        return str(inner.get("refund", {}).get("entity", {}).get("order_id", ""))
     return str(inner.get("order", {}).get("entity", {}).get("id", ""))
 
 

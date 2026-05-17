@@ -34,7 +34,9 @@ def _rzp_response(razorpay_order_id: str = "order_RZP_abc") -> httpx.Response:
 
 @pytest.fixture
 async def service(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> OrderService:
     return OrderService(
@@ -50,7 +52,8 @@ async def service(
 
 @respx.mock
 async def test_create_order_inserts_initializing_then_created(
-    service: OrderService, live_pool,
+    service: OrderService,
+    live_pool,
 ) -> None:
     route = respx.post("https://api.razorpay.com/v1/orders").mock(
         return_value=_rzp_response("order_NEW")
@@ -90,9 +93,7 @@ async def test_concurrent_inserts_same_receipt_collapse(service: OrderService) -
         return_value=_rzp_response("order_RACE")
     )
     request = CreateOrderRequest(receipt="r-race")
-    results = await asyncio.gather(
-        *[service.create_or_get(request) for _ in range(10)]
-    )
+    results = await asyncio.gather(*[service.create_or_get(request) for _ in range(10)])
     ids = {r.id for r in results}
     assert len(ids) == 1, f"expected one order id, got {ids}"
     assert route.call_count == 1
@@ -100,7 +101,8 @@ async def test_concurrent_inserts_same_receipt_collapse(service: OrderService) -
 
 @respx.mock
 async def test_razorpay_timeout_leaves_initializing_row(
-    service: OrderService, live_pool,
+    service: OrderService,
+    live_pool,
 ) -> None:
     respx.post("https://api.razorpay.com/v1/orders").mock(
         side_effect=httpx.TimeoutException("timeout")
@@ -120,7 +122,8 @@ async def test_razorpay_timeout_leaves_initializing_row(
 
 @respx.mock
 async def test_retry_after_razorpay_timeout_succeeds(
-    service: OrderService, live_pool,
+    service: OrderService,
+    live_pool,
 ) -> None:
     route = respx.post("https://api.razorpay.com/v1/orders")
     route.side_effect = [
@@ -147,11 +150,11 @@ async def test_retry_after_razorpay_timeout_succeeds(
 
 @respx.mock
 async def test_transition_legal_edge_writes_order_events(
-    service: OrderService, live_pool, db_config: RazorpayConfig,
+    service: OrderService,
+    live_pool,
+    db_config: RazorpayConfig,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        return_value=_rzp_response("order_T1")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(return_value=_rzp_response("order_T1"))
     record = await service.create_or_get(CreateOrderRequest(receipt="r-t1"))
 
     async with live_pool.acquire() as conn:
@@ -191,11 +194,11 @@ async def test_transition_legal_edge_writes_order_events(
 
 @respx.mock
 async def test_transition_illegal_edge_raises(
-    service: OrderService, live_pool, db_config: RazorpayConfig,
+    service: OrderService,
+    live_pool,
+    db_config: RazorpayConfig,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        return_value=_rzp_response("order_T2")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(return_value=_rzp_response("order_T2"))
     record = await service.create_or_get(CreateOrderRequest(receipt="r-t2"))
 
     async with live_pool.acquire() as conn:
@@ -217,11 +220,10 @@ async def test_transition_illegal_edge_raises(
 
 @respx.mock
 async def test_transition_rejects_cross_tenant_order(
-    service: OrderService, live_pool,
+    service: OrderService,
+    live_pool,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        return_value=_rzp_response("order_T3")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(return_value=_rzp_response("order_T3"))
     record = await service.create_or_get(CreateOrderRequest(receipt="r-t3"))
 
     async with live_pool.acquire() as conn:
@@ -239,7 +241,9 @@ async def test_transition_rejects_cross_tenant_order(
 
 @respx.mock
 async def test_transition_missing_order_raises(
-    service: OrderService, live_pool, db_config: RazorpayConfig,
+    service: OrderService,
+    live_pool,
+    db_config: RazorpayConfig,
 ) -> None:
     async with live_pool.acquire() as conn:
         async with conn.transaction():
@@ -258,11 +262,10 @@ async def test_transition_missing_order_raises(
 
 @respx.mock
 async def test_get_by_id_tenant_scoped(
-    service: OrderService, db_config: RazorpayConfig,
+    service: OrderService,
+    db_config: RazorpayConfig,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        return_value=_rzp_response("order_G1")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(return_value=_rzp_response("order_G1"))
     record = await service.create_or_get(CreateOrderRequest(receipt="r-g1"))
 
     fetched = await service.get_by_id(record.id, db_config.tenant_id)
@@ -275,11 +278,10 @@ async def test_get_by_id_tenant_scoped(
 
 @respx.mock
 async def test_get_by_razorpay_order_id(
-    service: OrderService, db_config: RazorpayConfig,
+    service: OrderService,
+    db_config: RazorpayConfig,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        return_value=_rzp_response("order_G2")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(return_value=_rzp_response("order_G2"))
     await service.create_or_get(CreateOrderRequest(receipt="r-g2"))
 
     fetched = await service.get_by_razorpay_order_id("order_G2", db_config.tenant_id)

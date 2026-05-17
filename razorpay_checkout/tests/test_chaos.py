@@ -89,9 +89,7 @@ def _captured_envelope(
     )
 
 
-async def _seed_order(
-    service: OrderService, receipt: str, razorpay_order_id: str
-) -> Any:
+async def _seed_order(service: OrderService, receipt: str, razorpay_order_id: str) -> Any:
     """Create an order in `created` state. Razorpay HTTP call is mocked."""
     with respx.mock() as mock_router:
         mock_router.post("https://api.razorpay.com/v1/orders").mock(
@@ -114,12 +112,16 @@ def stub_sqs_for_consumer() -> AsyncMock:
 
 @pytest.fixture
 async def service(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> OrderService:
     return OrderService(
-        pool=live_pool, config=db_config,
-        client=razorpay_client, amount_resolver=fixed_resolver,
+        pool=live_pool,
+        config=db_config,
+        client=razorpay_client,
+        amount_resolver=fixed_resolver,
     )
 
 
@@ -176,7 +178,8 @@ async def test_concurrent_same_event_deduped(
     async with live_pool.acquire() as conn:
         wh_rows = await conn.fetch(
             "SELECT * FROM webhook_events WHERE tenant_id = $1 AND event_id = $2",
-            order.tenant_id, json.loads(envelope)["event_id"],
+            order.tenant_id,
+            json.loads(envelope)["event_id"],
         )
         assert len(wh_rows) == 1, f"expected 1 webhook_events row, got {len(wh_rows)}"
 
@@ -184,9 +187,7 @@ async def test_concurrent_same_event_deduped(
             "SELECT * FROM order_events WHERE order_id = $1 AND to_status = 'paid'",
             order.id,
         )
-        assert len(paid_events) == 1, (
-            f"expected exactly 1 paid transition, got {len(paid_events)}"
-        )
+        assert len(paid_events) == 1, f"expected exactly 1 paid transition, got {len(paid_events)}"
 
         payments = await conn.fetch(
             "SELECT * FROM payments WHERE order_id = $1",
@@ -302,7 +303,9 @@ class _FlakyPool:
 
 @pytest.mark.requires_db
 async def test_db_transient_failure_eventual_success(
-    live_pool, service: OrderService, stub_sqs_for_consumer: AsyncMock,
+    live_pool,
+    service: OrderService,
+    stub_sqs_for_consumer: AsyncMock,
 ) -> None:
     """When the first consumer invocation raises a transient DB error, the
     second invocation (SQS re-delivery) must succeed and the order must
@@ -339,17 +342,15 @@ async def test_db_transient_failure_eventual_success(
             "SELECT * FROM order_events WHERE order_id = $1 AND to_status = 'paid'",
             order.id,
         )
-        assert len(paid_events) == 1, (
-            f"expected exactly 1 paid transition after retry, got {len(paid_events)}"
-        )
+        assert (
+            len(paid_events) == 1
+        ), f"expected exactly 1 paid transition after retry, got {len(paid_events)}"
 
         payments = await conn.fetch(
             "SELECT * FROM payments WHERE order_id = $1",
             order.id,
         )
-        assert len(payments) == 1, (
-            f"expected 1 payments row after retry, got {len(payments)}"
-        )
+        assert len(payments) == 1, f"expected 1 payments row after retry, got {len(payments)}"
 
         wh_rows = await conn.fetch(
             "SELECT processing_status FROM webhook_events WHERE tenant_id = $1",

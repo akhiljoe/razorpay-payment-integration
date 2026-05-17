@@ -26,7 +26,8 @@ Follow `docs/cloud/account-setup.md` then `docs/cloud/iam-bootstrap.md`. Provisi
 ### 2. Provision RDS Postgres
 
 `db.t4g.micro` in the same VPC as the Lambdas (or public-accessible if Free Track). Note the DSN:
-```
+
+```text
 postgresql://daj_app:<password>@<rds-endpoint>:5432/razorpay_checkout
 ```
 
@@ -45,7 +46,7 @@ Outputs include the webhook function URL — that's what you give Razorpay.
 
 The CDK wires these to each Lambda. Set them once for the `demo-tenant` tenant:
 
-```
+```text
 RAZORPAY_TENANT_ID=demo-tenant
 RAZORPAY_MODE=live
 RAZORPAY_KEY_ID=rzp_live_xxxxxxxxxx
@@ -75,7 +76,7 @@ INSERT INTO tenants (id, name) VALUES ('demo-tenant', 'Demo Store');
 
 ### 7. Register the webhook in Razorpay dashboard
 
-https://dashboard.razorpay.com → Webhooks → Add New:
+<https://dashboard.razorpay.com> → Webhooks → Add New:
 
 - **URL:** `https://<api-gateway-domain>/payments/webhook/demo-tenant`
 - **Secret:** same value as `RAZORPAY_WEBHOOK_SECRET` from step 4

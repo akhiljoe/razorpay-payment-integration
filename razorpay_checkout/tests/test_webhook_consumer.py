@@ -166,7 +166,9 @@ def _order_paid_payload(*, order_id: str, payment_id: str, amount: int) -> dict[
 
 @pytest.fixture
 async def service(
-    live_pool, db_config: RazorpayConfig, razorpay_client: RazorpayClient,
+    live_pool,
+    db_config: RazorpayConfig,
+    razorpay_client: RazorpayClient,
     fixed_resolver: FixedAmountResolver,
 ) -> OrderService:
     return OrderService(
@@ -185,9 +187,7 @@ def stub_sqs() -> AsyncMock:
 
 
 @pytest.fixture
-async def consumer(
-    live_pool, service: OrderService, stub_sqs: AsyncMock
-) -> WebhookConsumer:
+async def consumer(live_pool, service: OrderService, stub_sqs: AsyncMock) -> WebhookConsumer:
     return WebhookConsumer(
         pool=live_pool,
         order_service=service,
@@ -209,8 +209,11 @@ async def created_order(service: OrderService) -> Any:
 
 
 async def _advance_to(
-    live_pool, service: OrderService, order_id: uuid.UUID,
-    tenant_id: str, target: OrderStatus,
+    live_pool,
+    service: OrderService,
+    order_id: uuid.UUID,
+    tenant_id: str,
+    target: OrderStatus,
 ) -> None:
     """Walk an order forward through legal transitions to `target`."""
     chain = {
@@ -225,9 +228,7 @@ async def _advance_to(
         raise ValueError(f"unsupported advance target {target!r}")
     async with live_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.fetchrow(
-                "SELECT * FROM orders WHERE id = $1 FOR UPDATE", order_id
-            )
+            await conn.fetchrow("SELECT * FROM orders WHERE id = $1 FOR UPDATE", order_id)
             for step in steps:
                 await service.transition(
                     conn,
@@ -248,26 +249,32 @@ async def test_malformed_envelope_raises(consumer: WebhookConsumer) -> None:
 
 async def test_missing_envelope_field_raises(consumer: WebhookConsumer) -> None:
     with pytest.raises(ConsumerEnvelopeError):
-        await consumer.process_record(
-            message_body=json.dumps({"tenant_id": "t", "event_id": "e"})
-        )
+        await consumer.process_record(message_body=json.dumps({"tenant_id": "t", "event_id": "e"}))
 
 
 # ---------- Fast-path dedup ----------
 
 
 async def test_duplicate_event_id_is_short_circuited(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     payload = _captured_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_DUP", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured", event_id="evt_DUP",
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_DUP",
         payload=payload,
     )
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     decision1 = await consumer.process_record(message_body=body)
@@ -280,27 +287,33 @@ async def test_duplicate_event_id_is_short_circuited(
 
 
 async def test_payment_authorized_transitions_and_no_payments_row(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
     stub_sqs: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     payload = _authorized_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_AUTH", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.authorized",
-        event_id="evt_AUTH", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.authorized",
+        event_id="evt_AUTH",
+        payload=payload,
     )
     decision = await consumer.process_record(message_body=body)
     assert decision is SkipDecision.PROCEED
 
     async with live_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         payment_count = await conn.fetchval(
             "SELECT count(*) FROM payments WHERE order_id = $1", created_order.id
         )
@@ -313,19 +326,27 @@ async def test_payment_authorized_transitions_and_no_payments_row(
 
 
 async def test_payment_captured_transitions_and_publishes_fulfillment(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
     stub_sqs: AsyncMock,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     payload = _captured_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_CAP", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured",
-        event_id="evt_CAP", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_CAP",
+        payload=payload,
     )
     decision = await consumer.process_record(
         message_body=body,
@@ -334,9 +355,7 @@ async def test_payment_captured_transitions_and_publishes_fulfillment(
     assert decision is SkipDecision.PROCEED
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         payment_row = await conn.fetchrow(
             "SELECT status, is_authoritative, attempt_number "
             "FROM payments WHERE razorpay_payment_id = $1",
@@ -355,18 +374,26 @@ async def test_payment_captured_transitions_and_publishes_fulfillment(
 
 
 async def test_payment_captured_via_failed_recovery(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.FAILED,
     )
     payload = _captured_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_REC", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured",
-        event_id="evt_REC", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_REC",
+        payload=payload,
     )
     await consumer.process_record(message_body=body)
 
@@ -376,9 +403,7 @@ async def test_payment_captured_via_failed_recovery(
             "WHERE order_id = $1 AND trigger = 'webhook' ORDER BY created_at",
             created_order.id,
         )
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
     assert order_row["status"] == "paid"
     # Two webhook-triggered transitions: failed -> attempted, attempted -> paid
     transitions = [(e["from_status"], e["to_status"]) for e in events]
@@ -387,28 +412,34 @@ async def test_payment_captured_via_failed_recovery(
 
 
 async def test_payment_captured_publish_failure_keeps_order_paid(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
     stub_sqs: AsyncMock,
 ) -> None:
     stub_sqs.send_message = AsyncMock(side_effect=RuntimeError("sqs down"))
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     payload = _captured_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_PUBFAIL", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured",
-        event_id="evt_PUBFAIL", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_PUBFAIL",
+        payload=payload,
     )
     decision = await consumer.process_record(message_body=body)
     assert decision is SkipDecision.PROCEED  # commit happened; publish failure is logged
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
     assert order_row["status"] == "paid"
 
 
@@ -416,25 +447,31 @@ async def test_payment_captured_publish_failure_keeps_order_paid(
 
 
 async def test_payment_failed_transitions(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     payload = _failed_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_F", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.failed",
-        event_id="evt_F", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.failed",
+        event_id="evt_F",
+        payload=payload,
     )
     await consumer.process_record(message_body=body)
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         payment_row = await conn.fetchrow(
             "SELECT status, is_authoritative FROM payments WHERE razorpay_payment_id = $1",
             "pay_F",
@@ -444,26 +481,32 @@ async def test_payment_failed_transitions(
 
 
 async def test_payment_failed_stale_on_paid_is_noop(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.PAID,
     )
     payload = _failed_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_STALE", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.failed",
-        event_id="evt_STALE", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.failed",
+        event_id="evt_STALE",
+        payload=payload,
     )
     decision = await consumer.process_record(message_body=body)
     assert decision is SkipDecision.STALE_NO_OP
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
     assert order_row["status"] == "paid"
 
 
@@ -471,11 +514,17 @@ async def test_payment_failed_stale_on_paid_is_noop(
 
 
 async def test_refund_processed_updates_payment_and_inserts_refund(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     # First capture the order via the consumer so payments row exists.
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     captured = _captured_payload(
@@ -483,26 +532,30 @@ async def test_refund_processed_updates_payment_and_inserts_refund(
     )
     await consumer.process_record(
         message_body=_envelope(
-            tenant_id=db_config.tenant_id, event="payment.captured",
-            event_id="evt_CAP_REFA", payload=captured,
+            tenant_id=db_config.tenant_id,
+            event="payment.captured",
+            event_id="evt_CAP_REFA",
+            payload=captured,
         )
     )
 
     refund = _refund_payload(
-        order_id=created_order.razorpay_order_id, payment_id="pay_REFA",
-        refund_id="rfnd_REFA", amount=50000,
+        order_id=created_order.razorpay_order_id,
+        payment_id="pay_REFA",
+        refund_id="rfnd_REFA",
+        amount=50000,
     )
     await consumer.process_record(
         message_body=_envelope(
-            tenant_id=db_config.tenant_id, event="refund.processed",
-            event_id="evt_REF_REFA", payload=refund,
+            tenant_id=db_config.tenant_id,
+            event="refund.processed",
+            event_id="evt_REF_REFA",
+            payload=refund,
         )
     )
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         payment_row = await conn.fetchrow(
             "SELECT status, refunded_at FROM payments WHERE razorpay_payment_id = $1",
             "pay_REFA",
@@ -518,26 +571,34 @@ async def test_refund_processed_updates_payment_and_inserts_refund(
 
 
 async def test_refund_for_unknown_payment_flags_event_failed(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.PAID,
     )
     refund = _refund_payload(
-        order_id=created_order.razorpay_order_id, payment_id="pay_UNKNOWN",
-        refund_id="rfnd_X", amount=50000,
+        order_id=created_order.razorpay_order_id,
+        payment_id="pay_UNKNOWN",
+        refund_id="rfnd_X",
+        amount=50000,
     )
     await consumer.process_record(
         message_body=_envelope(
-            tenant_id=db_config.tenant_id, event="refund.processed",
-            event_id="evt_REF_X", payload=refund,
+            tenant_id=db_config.tenant_id,
+            event="refund.processed",
+            event_id="evt_REF_X",
+            payload=refund,
         )
     )
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         event_row = await conn.fetchrow(
             "SELECT processing_status FROM webhook_events WHERE event_id = $1",
             "evt_REF_X",
@@ -550,26 +611,32 @@ async def test_refund_for_unknown_payment_flags_event_failed(
 
 
 async def test_order_paid_is_log_only(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.PAID,
     )
     payload = _order_paid_payload(
         order_id=created_order.razorpay_order_id, payment_id="pay_OP", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="order.paid",
-        event_id="evt_OP", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="order.paid",
+        event_id="evt_OP",
+        payload=payload,
     )
     decision = await consumer.process_record(message_body=body)
     assert decision is SkipDecision.PROCEED
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         events = await conn.fetch(
             "SELECT to_status FROM order_events WHERE order_id = $1 AND trigger = 'webhook'",
             created_order.id,
@@ -583,10 +650,16 @@ async def test_order_paid_is_log_only(
 
 
 async def test_amount_mismatch_flags_event_failed_no_transition(
-    consumer: WebhookConsumer, live_pool, created_order: Any, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    live_pool,
+    created_order: Any,
+    db_config: RazorpayConfig,
 ) -> None:
     await _advance_to(
-        live_pool, consumer._service, created_order.id, db_config.tenant_id,
+        live_pool,
+        consumer._service,
+        created_order.id,
+        db_config.tenant_id,
         OrderStatus.ATTEMPTED,
     )
     # Wrong amount: order is 50000, event says 99999.
@@ -594,15 +667,15 @@ async def test_amount_mismatch_flags_event_failed_no_transition(
         order_id=created_order.razorpay_order_id, payment_id="pay_MIS", amount=99999
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured",
-        event_id="evt_MIS", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_MIS",
+        payload=payload,
     )
     await consumer.process_record(message_body=body)
 
     async with live_pool.acquire() as conn:
-        order_row = await conn.fetchrow(
-            "SELECT status FROM orders WHERE id = $1", created_order.id
-        )
+        order_row = await conn.fetchrow("SELECT status FROM orders WHERE id = $1", created_order.id)
         event_row = await conn.fetchrow(
             "SELECT processing_status, error FROM webhook_events WHERE event_id = $1",
             "evt_MIS",
@@ -616,14 +689,17 @@ async def test_amount_mismatch_flags_event_failed_no_transition(
 
 
 async def test_unknown_order_flags_event_failed(
-    consumer: WebhookConsumer, db_config: RazorpayConfig,
+    consumer: WebhookConsumer,
+    db_config: RazorpayConfig,
 ) -> None:
     payload = _captured_payload(
         order_id="order_DOES_NOT_EXIST", payment_id="pay_NOEX", amount=50000
     )
     body = _envelope(
-        tenant_id=db_config.tenant_id, event="payment.captured",
-        event_id="evt_NOEX", payload=payload,
+        tenant_id=db_config.tenant_id,
+        event="payment.captured",
+        event_id="evt_NOEX",
+        payload=payload,
     )
     decision = await consumer.process_record(message_body=body)
     assert decision is SkipDecision.PROCEED  # the handler marked failed and returned

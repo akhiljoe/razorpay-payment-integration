@@ -3,6 +3,7 @@
 Every command you'll repeatedly run. Organized by task. Ctrl-F your way around.
 
 All commands assume:
+
 - POSIX shell (git bash on Windows; PowerShell users adapt).
 - Working directory is the repo root unless noted.
 - Stale `RAZORPAY_*` env vars are unset (see "Shell hygiene" below).
@@ -101,6 +102,7 @@ uv run --project ../../razorpay_checkout uvicorn main:app --reload --port 8000
 ```
 
 Reachable URLs:
+
 - `http://localhost:8000/health`
 - `http://localhost:8000/dev/dashboard` — Mission Control: KPIs + Payment Journey + 11 scenarios. Gated on `RAZORPAY_DEV_ROUTES_ENABLED=true`.
 - `http://localhost:8000/admin/dashboard` — read-only ops view. Gated on header `X-Admin-Api-Key: $RAZORPAY_ADMIN_API_KEY`. The browser modal prompts on first load and stores the key in `sessionStorage` (cleared on tab close — see DESIGN 17.15).

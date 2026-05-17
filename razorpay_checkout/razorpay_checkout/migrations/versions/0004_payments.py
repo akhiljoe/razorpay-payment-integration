@@ -4,6 +4,7 @@ Revision ID: 0004_payments
 Revises: 0003_orders_indexes
 Create Date: 2026-05-11
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

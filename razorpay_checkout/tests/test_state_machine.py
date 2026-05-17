@@ -49,8 +49,15 @@ EXPECTED_TRANSITIONS = {
 
 def test_enum_values_match_db_string_contract() -> None:
     expected = {
-        "initializing", "created", "attempted", "authorized",
-        "paid", "fulfilled", "fulfillment_failed", "failed", "refunded",
+        "initializing",
+        "created",
+        "attempted",
+        "authorized",
+        "paid",
+        "fulfilled",
+        "fulfillment_failed",
+        "failed",
+        "refunded",
     }
     actual = {s.value for s in OrderStatus}
     assert actual == expected
@@ -104,16 +111,12 @@ _ILLEGAL_PAIRS = [p for p in _ALL_PAIRS if p not in EXPECTED_TRANSITIONS]
 
 
 @pytest.mark.parametrize(("from_status", "to_status"), _LEGAL_PAIRS)
-def test_legal_transition_returns_none(
-    from_status: OrderStatus, to_status: OrderStatus
-) -> None:
+def test_legal_transition_returns_none(from_status: OrderStatus, to_status: OrderStatus) -> None:
     assert assert_transition(from_status, to_status, "order_x") is None
 
 
 @pytest.mark.parametrize(("from_status", "to_status"), _ILLEGAL_PAIRS)
-def test_illegal_transition_raises(
-    from_status: OrderStatus, to_status: OrderStatus
-) -> None:
+def test_illegal_transition_raises(from_status: OrderStatus, to_status: OrderStatus) -> None:
     with pytest.raises(IllegalTransitionError) as exc_info:
         assert_transition(from_status, to_status, "order_x")
     assert exc_info.value.from_status is from_status

@@ -33,16 +33,16 @@ if _ENV_FILE.exists():
         _k, _v = _line.split("=", 1)
         os.environ.setdefault(_k.strip(), _v.strip())
 
-import hashlib
-import hmac
-import json
-import time
-import uuid
+import hashlib  # noqa: E402
+import hmac  # noqa: E402
+import json  # noqa: E402
+import time  # noqa: E402
+import uuid  # noqa: E402
 
-import aioboto3
-import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+import aioboto3  # noqa: E402
+import httpx  # noqa: E402
+from fastapi import Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 
 
 # ============================================================
@@ -87,7 +87,8 @@ def _require_admin_key(
     if not x_admin_api_key or not hmac.compare_digest(expected, x_admin_api_key):
         raise HTTPException(status_code=403, detail="invalid admin key")
 
-from razorpay_checkout import (
+
+from razorpay_checkout import (  # noqa: E402
     DefaultFulfillmentHook,
     FixedAmountResolver,
     OrderService,
@@ -101,7 +102,7 @@ from razorpay_checkout import (
     ensure_webhook_events_queues,
     payments_router,
 )
-from razorpay_checkout.db import create_pool
+from razorpay_checkout.db import create_pool  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 FRONTEND_DIR = HERE.parent / "frontend"
@@ -163,13 +164,21 @@ app = FastAPI(lifespan=lifespan, title="Razorpay Checkout dev backend")
 app.include_router(payments_router, prefix="/payments")
 
 
-@app.get("/dev/test-page", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
+@app.get(
+    "/dev/test-page",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_dev_routes)],
+)
 async def test_page(_request: Request) -> FileResponse:
     """Serve the dev test page HTML. See example/frontend/test_page.html."""
     return FileResponse(FRONTEND_DIR / "test_page.html", media_type="text/html")
 
 
-@app.get("/dev/shop", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
+@app.get(
+    "/dev/shop",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_dev_routes)],
+)
 async def dev_shop(_request: Request) -> FileResponse:
     """Buyer-perspective storefront simulation. Shows a product, opens the
     real Razorpay checkout modal, and walks through the confirmation
@@ -195,7 +204,11 @@ async def health() -> dict[str, str]:
 # ---------- /dev/dashboard live state UI (DEV ONLY) ----------
 
 
-@app.get("/dev/dashboard", response_class=HTMLResponse, dependencies=[Depends(_require_dev_routes)])
+@app.get(
+    "/dev/dashboard",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_dev_routes)],
+)
 async def dev_dashboard(_request: Request) -> FileResponse:
     """Single-page dev UI. Local-dev only — gated by RAZORPAY_DEV_ROUTES_ENABLED."""
     return FileResponse(FRONTEND_DIR / "dashboard.html", media_type="text/html")
@@ -240,9 +253,7 @@ async def dev_flow_index(request: Request) -> JSONResponse:
              LIMIT 20
             """
         )
-    return JSONResponse(
-        {"orders": [_isoformat_dict(_row_to_dict(r)) for r in rows]}
-    )
+    return JSONResponse({"orders": [_isoformat_dict(_row_to_dict(r)) for r in rows]})
 
 
 @app.get("/dev/flow/{order_id}", dependencies=[Depends(_require_dev_routes)])
@@ -260,7 +271,10 @@ async def dev_flow_detail(order_id: str, request: Request) -> JSONResponse:
     return JSONResponse(full["selected"])
 
 
-@app.get("/dev/flow/{order_id}/__legacy_disabled", dependencies=[Depends(_require_dev_routes)])
+@app.get(
+    "/dev/flow/{order_id}/__legacy_disabled",
+    dependencies=[Depends(_require_dev_routes)],
+)
 async def _dev_flow_detail_legacy(order_id: str, request: Request) -> JSONResponse:
     """Aggregated view of one order: row, payments, refunds, webhook_events,
     order_events. The dashboard polls this every second."""
@@ -271,9 +285,7 @@ async def _dev_flow_detail_legacy(order_id: str, request: Request) -> JSONRespon
         raise HTTPException(400, f"invalid order_id: {exc}") from exc
 
     async with pool.acquire() as conn:
-        order = await conn.fetchrow(
-            "SELECT * FROM orders WHERE id = $1", oid
-        )
+        order = await conn.fetchrow("SELECT * FROM orders WHERE id = $1", oid)
         if order is None:
             raise HTTPException(404, "order not found")
         payments = await conn.fetch(
@@ -442,7 +454,9 @@ async def dev_simulate(payload: dict, request: Request) -> JSONResponse:
     """
     event_type = payload.get("event_type")
     rzp_order_id = payload.get("razorpay_order_id")
-    rzp_payment_id = payload.get("razorpay_payment_id") or f"pay_{uuid.uuid4().hex[:14]}"
+    rzp_payment_id = (
+        payload.get("razorpay_payment_id") or f"pay_{uuid.uuid4().hex[:14]}"
+    )
     amount = int(payload.get("amount", 50000))
     refund_id = payload.get("refund_id")
 
@@ -613,9 +627,7 @@ async def _aggregated_dashboard_payload(
         filter_clauses = ["($1::text IS NULL OR tenant_id = $1)"]
         filter_args: list = [tenant_id]
         if status_in:
-            placeholders = ", ".join(
-                f"${i + 2}" for i in range(len(status_in))
-            )
+            placeholders = ", ".join(f"${i + 2}" for i in range(len(status_in)))
             filter_clauses.append(f"status IN ({placeholders})")
             filter_args.extend(status_in)
         if today_only:
@@ -644,9 +656,7 @@ async def _aggregated_dashboard_payload(
             except ValueError:
                 oid = None
             if oid is not None:
-                order = await conn.fetchrow(
-                    "SELECT * FROM orders WHERE id = $1", oid
-                )
+                order = await conn.fetchrow("SELECT * FROM orders WHERE id = $1", oid)
                 if order is not None:
                     payments = await conn.fetch(
                         "SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at",
@@ -690,10 +700,16 @@ async def _aggregated_dashboard_payload(
                     )
                     payload["selected"] = {
                         "order": _isoformat_dict(_row_to_dict(order)),
-                        "payments": [_isoformat_dict(_row_to_dict(r)) for r in payments],
+                        "payments": [
+                            _isoformat_dict(_row_to_dict(r)) for r in payments
+                        ],
                         "refunds": [_isoformat_dict(_row_to_dict(r)) for r in refunds],
-                        "order_events": [_isoformat_dict(_row_to_dict(r)) for r in events],
-                        "webhook_events": [_isoformat_dict(_row_to_dict(r)) for r in wh],
+                        "order_events": [
+                            _isoformat_dict(_row_to_dict(r)) for r in events
+                        ],
+                        "webhook_events": [
+                            _isoformat_dict(_row_to_dict(r)) for r in wh
+                        ],
                     }
 
     # Queue depths (4 SQS calls, ~100ms total in prod).

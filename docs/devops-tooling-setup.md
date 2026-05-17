@@ -31,7 +31,7 @@ Five jobs run on every PR:
 
 | Secret | Where to get it |
 |---|---|
-| `INFRACOST_API_KEY` | Free at https://www.infracost.io/. `infracost auth login` prints it. Add at **Settings -> Secrets and variables -> Actions -> New repository secret**. |
+| `INFRACOST_API_KEY` | Free at <https://www.infracost.io/>. `infracost auth login` prints it. Add at **Settings -> Secrets and variables -> Actions -> New repository secret**. |
 
 No AWS keys needed. Real deploys use OIDC (Pillar 8 of `designs/MIGRATION_ARCHITECTURE.md`), which is a separate workflow not yet wired.
 
@@ -72,7 +72,7 @@ The bot updates a single comment on the PR. A red diff (cost rises) is a discuss
 
 ### Install (one-time)
 
-Install the **Renovate** GitHub App from https://github.com/apps/renovate, scoped to this repo.
+Install the **Renovate** GitHub App from <https://github.com/apps/renovate>, scoped to this repo.
 
 On first install, Renovate opens an **Onboarding PR** with a sample config. Close it. The committed `renovate.json` at repo root is the real config.
 

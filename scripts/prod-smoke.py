@@ -28,11 +28,9 @@ this script is intentionally read-only.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
-from typing import Any
 
 import httpx
 
@@ -43,7 +41,9 @@ def _check(name: str, ok: bool, detail: str = "") -> bool:
     return ok
 
 
-def smoke(base_url: str, admin_key: str | None, tenant: str | None, timeout: float) -> int:
+def smoke(
+    base_url: str, admin_key: str | None, tenant: str | None, timeout: float
+) -> int:
     base = base_url.rstrip("/")
     print(f"smoke test against {base}\n")
     all_ok = True
@@ -70,7 +70,9 @@ def smoke(base_url: str, admin_key: str | None, tenant: str | None, timeout: flo
     # 2. /admin/kpis — lightweight, returns today's counts + queue depths.
     t0 = time.perf_counter()
     try:
-        r = httpx.get(f"{base}/admin/kpis", headers=headers, params=params, timeout=timeout)
+        r = httpx.get(
+            f"{base}/admin/kpis", headers=headers, params=params, timeout=timeout
+        )
         latency_ms = (time.perf_counter() - t0) * 1000
         ok = r.status_code == 200
         body = r.json() if ok else {}

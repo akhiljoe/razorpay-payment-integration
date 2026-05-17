@@ -41,9 +41,7 @@ async def test_create_order_success_returns_payload(
             json={"id": "order_TEST123", "amount": 50000, "currency": "INR"},
         )
     )
-    result = await client.create_order(
-        amount=50000, currency="INR", receipt="r1", notes={"k": "v"}
-    )
+    result = await client.create_order(amount=50000, currency="INR", receipt="r1", notes={"k": "v"})
     assert result["id"] == "order_TEST123"
     assert route.called
     sent_request = route.calls[0].request
@@ -110,9 +108,7 @@ async def test_create_order_4xx_non_json_body(client: RazorpayClient) -> None:
 async def test_create_order_transport_error_raises_unavailable(
     client: RazorpayClient,
 ) -> None:
-    respx.post("https://api.razorpay.com/v1/orders").mock(
-        side_effect=httpx.ConnectError("dns")
-    )
+    respx.post("https://api.razorpay.com/v1/orders").mock(side_effect=httpx.ConnectError("dns"))
     with pytest.raises(RazorpayUnavailableError):
         await client.create_order(amount=100, currency="INR", receipt="r1")
     await client.aclose()
@@ -120,10 +116,15 @@ async def test_create_order_transport_error_raises_unavailable(
 
 @respx.mock
 async def test_client_uses_configured_timeout(config: RazorpayConfig) -> None:
-    config_ = RazorpayConfig(**{**config.model_dump(), "razorpay_api_timeout": 2.5,
-                                  "key_secret": config.key_secret.get_secret_value(),
-                                  "webhook_secret": config.webhook_secret.get_secret_value(),
-                                  "db_dsn": str(config.db_dsn)})
+    config_ = RazorpayConfig(
+        **{
+            **config.model_dump(),
+            "razorpay_api_timeout": 2.5,
+            "key_secret": config.key_secret.get_secret_value(),
+            "webhook_secret": config.webhook_secret.get_secret_value(),
+            "db_dsn": str(config.db_dsn),
+        }
+    )
     c = RazorpayClient(config_)
     assert c._client.timeout.read == 2.5
     await c.aclose()
