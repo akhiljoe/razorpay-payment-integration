@@ -7,7 +7,7 @@ Live tracker of what's actually provisioned where. Updated as phases land.
 | Field | Dev | Prod |
 |---|---|---|
 | AWS Account ID | `111111111111` | `222222222222` |
-| Account display name | Turing | (set whatever you used) |
+| Account display name | Turing | Kugelblitz |
 | Root login email | `aws-dev@example.com` | `aws-prod@example.com` |
 | Account age | ~1 week (12-month free tier active) | ~1 week (12-month free tier active) |
 
