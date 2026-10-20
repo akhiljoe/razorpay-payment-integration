@@ -350,4 +350,4 @@ If `tenant_id` is something other than `local-dev`, you have a stale shell env v
 
 - [QUICKSTART.md](QUICKSTART.md) — first-time setup
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — symptom-indexed fixes
-- [docs/runbooks/](docs/runbooks/) — deep dives for incident response
+- [docs/runbooks/](runbooks/) — deep dives for incident response

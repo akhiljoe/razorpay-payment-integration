@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Error or symptom → fix index. For deep incident response, see [`docs/runbooks/`](docs/runbooks/).
+Error or symptom → fix index. For deep incident response, see [`docs/runbooks/`](runbooks/).
 
 Each entry tagged:
 
@@ -104,7 +104,7 @@ uv run --project razorpay_checkout python scripts/local-fixtures.py seed --tenan
 HMAC verification failed. Three causes:
 
 1. **Wrong `webhook_secret`** in `.env` vs. what signed the request. The simulator uses `dev_webhook_secret` by default; ensure your `.env` matches.
-2. **Rotation in progress** and `webhook_secret_previous` is wrong/unset. See [`webhook-secret-rotation.md`](docs/runbooks/webhook-secret-rotation.md).
+2. **Rotation in progress** and `webhook_secret_previous` is wrong/unset. See [`webhook-secret-rotation.md`](runbooks/webhook-secret-rotation.md).
 3. **Wrong tenant in URL path** — different tenants use different secrets; one tenant's signature won't validate at another tenant's URL.
 
 Check logs in uvicorn console for `signature_mismatch` line with the offered signature and the expected fingerprint.
@@ -129,7 +129,7 @@ Webhook queue depth tells you which stage stalled.
 
 ### Order stuck at `paid`, never reaches `fulfilled` (Predicted)
 
-The fulfillment lambda didn't run. See [`stuck-paid-order.md`](docs/runbooks/stuck-paid-order.md).
+The fulfillment lambda didn't run. See [`stuck-paid-order.md`](runbooks/stuck-paid-order.md).
 
 Locally: check that `local-pump.py` is running and processing both queues. The `fulfillment-queue.fifo` should drain to 0 within seconds of the consumer publishing.
 
@@ -156,7 +156,7 @@ State machine rejected the transition. See [ARCHITECTURE.md → State machine](A
 
 ### `slow_pool_acquire` log lines (Predicted)
 
-DB pool exhausted. See [`incident-checklist.md` → DB pool exhaustion](docs/runbooks/incident-checklist.md). Raise `RAZORPAY_POOL_MAX_SIZE` in `.env` and restart the Lambda/uvicorn.
+DB pool exhausted. See [`incident-checklist.md` → DB pool exhaustion](runbooks/incident-checklist.md). Raise `RAZORPAY_POOL_MAX_SIZE` in `.env` and restart the Lambda/uvicorn.
 
 ### asyncpg returns `str` for a JSONB column (Hit, Section 17.8)
 
@@ -288,7 +288,7 @@ timestamps. See DESIGN 17.14.
 
 ### Messages stuck in DLQ (Predicted)
 
-See [`dlq-drain.md`](docs/runbooks/dlq-drain.md) for full triage.
+See [`dlq-drain.md`](runbooks/dlq-drain.md) for full triage.
 
 Quick: classify whether it's a poison message (malformed envelope) or a transient failure that never recovered. Inspect with:
 
@@ -342,7 +342,7 @@ docker push <account>.dkr.ecr.ap-south-1.amazonaws.com/razorpay-webhook-producer
 ## When in doubt
 
 1. **Snapshot the system state.** Dashboard → click "Copy snapshot" → paste somewhere.
-2. **Check the runbook index.** [`docs/runbooks/`](docs/runbooks/) has 5 incident-focused playbooks.
+2. **Check the runbook index.** [`docs/runbooks/`](runbooks/) has 5 incident-focused playbooks.
 3. **Read the relevant Section 17 entry** in DESIGN_v6 — we documented every non-obvious bug. 13 entries so far.
 4. **`git log --oneline -10`** — the most recent commits often explain why the current code does what it does.
 5. **Reproduce in the dashboard's scenario runner.** If a scenario regresses, an invariant broke.
@@ -350,5 +350,5 @@ docker push <account>.dkr.ecr.ap-south-1.amazonaws.com/razorpay-webhook-producer
 ## Related
 
 - [COMMANDS.md](COMMANDS.md) — command reference.
-- [docs/runbooks/](docs/runbooks/) — incident-response deep dives.
+- [docs/runbooks/](runbooks/) — incident-response deep dives.
 - [designs/DESIGN_v6.md](../designs/DESIGN_v6.md) — Section 17 captures every documented learning.

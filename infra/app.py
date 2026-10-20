@@ -48,9 +48,8 @@ def main() -> None:
     budget_thresholds = app.node.try_get_context("razorpay:budget_thresholds_usd") or [5, 25, 100]
 
     for env_name, env_cfg in envs.items():
-        account = os.environ.get(f"RAZORPAY_ACCOUNT_{env_name.upper().replace('-', '_')}") or env_cfg.get(
-            "account"
-        )
+        account_var = f"RAZORPAY_ACCOUNT_{env_name.upper().replace('-', '_')}"
+        account = os.environ.get(account_var) or env_cfg.get("account")
         region = env_cfg.get("region", "ap-south-1")
         # Allow overriding from process env so CI can pin a per-branch account.
         if account == "REPLACE_WITH_ACCOUNT_ID":

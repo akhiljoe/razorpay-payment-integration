@@ -154,4 +154,4 @@ Full command reference: [`COMMANDS.md`](COMMANDS.md).
 - [`./runbooks/`](./runbooks/) — operator playbooks per incident type.
 - [`./cloud/`](./cloud/) — AWS account setup, IAM patterns, cost controls.
 - [`../designs/DESIGN_v6.md`](../designs/DESIGN_v6.md) — formal spec. Section 17 captures hard-won lessons learned.
-- [`.claude/rules/`](.claude/rules/) — invariant-enforcing rules consumed by AI agents working on this repo.
+- [`.claude/rules/`](../.claude/rules/) — invariant-enforcing rules consumed by AI agents working on this repo.

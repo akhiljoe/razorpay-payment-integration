@@ -20,7 +20,7 @@ Everything under `docs/` plus pointers to the design folder and the repo root.
 | Know what each phase shipped + why | [PHASES.md](PHASES.md) |
 | Walk through the forward-looking phase plan | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | Plan a prod cutover | [PROD_MIGRATION.md](PROD_MIGRATION.md) |
-| Look up the test matrix | [TEST_PLAN.md](TEST_PLAN.md) |
+| Browse the test suites | [`razorpay_checkout/tests/`](../razorpay_checkout/tests/) (pytest) and [`checkout-widget/src/__tests__/`](../packages/checkout-widget/src/__tests__/) (vitest) |
 | Work on the codebase as an AI agent | [../CLAUDE.md](../CLAUDE.md) and [../.claude/rules/](../.claude/rules/) |
 
 ## By directory

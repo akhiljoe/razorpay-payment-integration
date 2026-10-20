@@ -12,7 +12,9 @@ Implementation was built with [Claude Code](https://claude.com/claude-code) as a
 
 ## Status
 
-**16 phases complete, fully tested locally.** Cloud deploy (Phase 17) is documented but not executed — the artifact is shippable as-is for any host that has its own AWS infrastructure.
+**Application: 16 build phases complete, fully tested locally** against Postgres + LocalStack.
+
+**AWS deployment: in progress.** Phases 1–2 of 10 are done (account hardening, IAM, GitHub OIDC deploy roles); CDK stacks, database and cutover are next. Live tracker: [docs/deployment-progress.md](docs/deployment-progress.md). The library is shippable as-is for any host with its own AWS infrastructure.
 
 - 240+ pytest tests + 3 chaos tests pass against Postgres + LocalStack
 - 11/11 dashboard scenarios prove every Critical Invariant end-to-end
@@ -46,11 +48,48 @@ Implementation was built with [Claude Code](https://claude.com/claude-code) as a
 | Estimating monthly AWS spend | [docs/cost-analysis.md](docs/cost-analysis.md) |
 | AI agent working on the codebase | [CLAUDE.md](CLAUDE.md) |
 
-## Architecture in one sentence
+## Architecture
 
-A FastAPI router receives Razorpay webhooks, fast-verifies HMAC signatures **without any database access**, publishes onto an SQS FIFO queue; a separate consumer Lambda drains the queue, applies an event-type-aware idempotency guard inside a `SELECT ... FOR UPDATE` transaction, advances the order's state machine, and publishes to a second SQS FIFO queue; a fulfillment Lambda drains that, invokes the host's `FulfillmentHook`, and transitions to terminal status.
+```mermaid
+flowchart LR
+  subgraph Customer
+    Browser["Customer browser<br/>(checkout widget)"]
+  end
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full diagram and the 10 Critical Invariants that make this safe.
+  subgraph Razorpay
+    RZP["Razorpay API<br/>+ Webhook"]
+  end
+
+  subgraph "This system"
+    direction TB
+    Producer["Webhook Producer<br/>(FastAPI Lambda)<br/>NO DB ACCESS"]
+    WQ[("webhook-events.fifo")]
+    WDLQ[("webhook-events-dlq.fifo")]
+    Consumer["Webhook Consumer<br/>(Lambda)"]
+    FQ[("fulfillment-queue.fifo")]
+    FDLQ[("fulfillment-dlq.fifo")]
+    Fulfillment["Fulfillment Lambda"]
+    DB[("Postgres<br/>orders / payments / refunds<br/>webhook_events / order_events")]
+    Hook["FulfillmentHook<br/>(host-provided)"]
+  end
+
+  Browser -->|POST /orders| Producer
+  Browser -->|Razorpay checkout.js| RZP
+  RZP -->|webhook + signature| Producer
+  Producer -->|publish| WQ
+  WQ -->|drain| Consumer
+  Consumer -.->|5 retries → DLQ| WDLQ
+  Consumer <-->|FOR UPDATE| DB
+  Consumer -->|publish| FQ
+  FQ -->|drain| Fulfillment
+  Fulfillment -.->|5 retries → DLQ| FDLQ
+  Fulfillment <-->|FOR UPDATE| DB
+  Fulfillment -->|invoke| Hook
+```
+
+In one sentence: a FastAPI router receives Razorpay webhooks, fast-verifies HMAC signatures **without any database access**, publishes onto an SQS FIFO queue; a separate consumer Lambda drains the queue, applies an event-type-aware idempotency guard inside a `SELECT ... FOR UPDATE` transaction, advances the order's state machine, and publishes to a second SQS FIFO queue; a fulfillment Lambda drains that, invokes the host's `FulfillmentHook`, and transitions to terminal status.
+
+More pictures in [docs/diagrams/](docs/diagrams/): the [webhook sequence](docs/diagrams/webhook-flow.md) for one payment event, the [order state machine](docs/diagrams/state-machine.md), the detailed [system architecture](docs/diagrams/system-architecture.md) and the [AWS deployment topology](docs/diagrams/deployment-topology.md). [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the 10 Critical Invariants that make this safe.
 
 ## Run it locally
 

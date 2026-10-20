@@ -84,4 +84,4 @@ flowchart LR
 
 - [webhook-flow.md](webhook-flow.md) — what happens *inside* this picture during one `payment.captured` event.
 - [state-machine.md](state-machine.md) — the order status graph.
-- [ARCHITECTURE.md](../../ARCHITECTURE.md) — full system overview in prose.
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — full system overview in prose.

@@ -34,7 +34,7 @@ Total wall-clock time: ~3 to 5 minutes.
 
 ### 1. `pre-commit`
 
-**What it does**
+#### What it does
 
 Runs the same hooks listed in `.pre-commit-config.yaml` against every file in the repo. In CI this means re-running all of them on every push, even if no commit triggered the local hook.
 
@@ -53,11 +53,11 @@ Runs the same hooks listed in `.pre-commit-config.yaml` against every file in th
 | `ruff lint` + `ruff format` | Python linting and formatting (replaces flake8 + black) |
 | `markdownlint` | Markdown structural issues in `designs/` and `docs/` |
 
-**Why it matters**
+#### Why it matters
 
 It's the cheapest line of defence. Catches secrets before they touch GitHub (gitleaks scans full history with `fetch-depth: 0`), catches formatting drift, catches broken YAML before it reaches anything that parses YAML.
 
-**How to satisfy locally**
+#### How to satisfy locally
 
 ```bash
 pipx install pre-commit
@@ -67,7 +67,7 @@ pre-commit run --all-files   # mimics CI exactly
 
 ### 2. `python-tests`
 
-**What it does**
+#### What it does
 
 Spins up a PostgreSQL 16 container as a service, installs the `razorpay_checkout` Python package with dev extras (via `uv`), then:
 
@@ -76,11 +76,11 @@ Spins up a PostgreSQL 16 container as a service, installs the `razorpay_checkout
 3. **alembic upgrade head** to apply migrations against the live Postgres.
 4. **pytest** on the unit suite, excluding tests marked `requires_localstack` (those need SQS, run only in nightly).
 
-**Why a real Postgres container**
+#### Why a real Postgres container
 
 The codebase uses asyncpg-specific behaviour (advisory locks, JSONB ops, `SELECT ... FOR UPDATE`). SQLite stubs would miss state machine + idempotency bugs that only show up under real row locking.
 
-**How to satisfy locally**
+#### How to satisfy locally
 
 ```bash
 cd razorpay_checkout
@@ -91,7 +91,7 @@ uv run ruff check . && uv run mypy && uv run alembic upgrade head && uv run pyte
 
 ### 3. `cdk-synth-nag`
 
-**What it does**
+#### What it does
 
 Builds the CDK app and runs cdk-nag's `AwsSolutionsChecks` ruleset against every resource. Steps:
 
@@ -101,15 +101,15 @@ Builds the CDK app and runs cdk-nag's `AwsSolutionsChecks` ruleset against every
 4. **`cdk synth --quiet`** — compiles `infra/app.py` into CloudFormation JSON under `infra/cdk.out/`. The cdk-nag aspect attached in `app.py` runs as part of synth and errors out if any rule fires without a registered suppression.
 5. **Upload `infra/cdk.out`** as a build artifact named `cdk-out` so the downstream jobs can consume it.
 
-**Why cdk-nag**
+#### Why cdk-nag
 
 cdk-nag is a community-maintained library that walks the CDK construct tree at synth time and flags 100+ AWS best-practice violations (unencrypted SQS, public Lambdas, IAM wildcards, missing log retention, etc.). Running it at synth means you catch problems before any CloudFormation deploy. Suppressions live in `infra/stacks/nag_suppressions.py` with written justifications, so when a future reviewer asks "why is this allowed?" the answer is in code, not in a Confluence page.
 
-**Why publish an artifact**
+#### Why publish an artifact
 
 `checkov` and `infracost` both need the synthesised CloudFormation. Re-running synth in each job would triple the wall-clock time. Artifacts solve this: synth once, download in the downstream jobs.
 
-**How to satisfy locally**
+#### How to satisfy locally
 
 ```bash
 cd infra
@@ -120,18 +120,18 @@ uv run cdk synth --quiet
 
 ### 4. `checkov`
 
-**What it does**
+#### What it does
 
 Bridgecrew's Checkov scanner reads the CloudFormation JSON from the `cdk-out` artifact and runs a separate ruleset focused on cloud security posture. Where cdk-nag is opinionated about AWS-specific best practices, Checkov is broader (cross-cloud, runs the same scans on Terraform, K8s manifests, etc.) and often flags things cdk-nag doesn't.
 
-**Why two scanners**
+#### Why two scanners
 
 They overlap by maybe 40 percent. The non-overlapping rules are the value:
 
 - **cdk-nag** catches AWS-specific config gaps (KMS key rotation off, SQS without DLQ, X-Ray tracing missing).
 - **Checkov** catches policy patterns (wildcard principals, public S3, IMDSv1 on EC2) and has its own scoring + SARIF output that integrates with GitHub's Security tab when enabled.
 
-**Skip list**
+#### Skip list
 
 The workflow's `skip_check:` parameter excludes 12 rules. Each one corresponds to an architectural decision documented in `designs/MIGRATION_ARCHITECTURE.md`:
 
@@ -152,21 +152,21 @@ The workflow's `skip_check:` parameter excludes 12 rules. Each one corresponds t
 
 The full justifications live as inline comments next to the `skip_check` line so any future reviewer sees them immediately.
 
-**SARIF upload**
+#### SARIF upload
 
 The last step tries to upload Checkov's findings as a SARIF file to GitHub's Code Scanning service, which would populate the Security tab. **Private repos need GitHub Advanced Security (paid) for Code Scanning**, so this step has `continue-on-error: true`. It logs a warning, doesn't fail the job. Checkov's findings still print to the job log.
 
 ### 5. `infracost`
 
-**What it does**
+#### What it does
 
 Estimates the AWS monthly cost from the CloudFormation in the `cdk-out` artifact, diffs it against the cost on the base branch (target of the PR), and posts a comment on the PR with the breakdown.
 
-**Why**
+#### Why
 
 A `cdk diff` shows what infra is changing. Infracost shows what your AWS bill will change. Catches "I added a NAT gateway and didn't realise it costs $32/mo" before merge.
 
-**Setup required**
+#### Setup required
 
 This job only runs on **pull requests** (not on push to main). It needs a free API key from infracost.io, stored as a repo secret named `INFRACOST_API_KEY`. Without that secret the job will fail open — currently it's set up but won't actually run until you open a PR.
 

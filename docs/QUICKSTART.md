@@ -122,7 +122,7 @@ In ~10 minutes you have a fully functioning, locally-runnable payment integratio
 | See every command | [COMMANDS.md](COMMANDS.md) |
 | Read system overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Hit an error | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
-| Run against AWS | [docs/cloud/account-setup.md](docs/cloud/account-setup.md) |
+| Run against AWS | [docs/cloud/account-setup.md](cloud/account-setup.md) |
 
 ## Common first-time issues
 
