@@ -48,15 +48,17 @@ The stack creates retained resources (ECR repos, log groups). `cdk destroy` will
 
 ## Context overrides
 
-`cdk.json` has placeholders. Override per environment:
+`cdk.json` ships placeholder account IDs (`111111111111` dev, `222222222222` prod), a placeholder ops email and `example.com` domains. Supply real values through the environment so they never get committed:
 
 ```bash
-# Inline
-AWS_PROFILE=razorpay-prod CDK_DEFAULT_ACCOUNT=123456789012 \
-  uv run cdk deploy --context razorpay:ops_email=ops@example.com
+export RAZORPAY_ACCOUNT_DEV=<dev account id>
+export RAZORPAY_ACCOUNT_PROD=<prod account id>
+export RAZORPAY_OPS_EMAIL=<alerts address>
 
-# Or edit cdk.json and commit
+AWS_PROFILE=razorpay-prod uv run cdk deploy razorpay-prod-foundation
 ```
+
+The env var name is `RAZORPAY_ACCOUNT_<ENV>` for each key under `razorpay:env`. Domains live in the `razorpay:domain` context block; override with `--context` or a local, uncommitted copy of `cdk.json`.
 
 ## What this stack provisions
 

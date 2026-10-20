@@ -90,9 +90,9 @@ SUPPRESSIONS: list[_Suppression] = [
             "narrower scoping would require redeploying on every onboard. "
             "Tenant isolation enforced at application layer."
         ),
+        # {region} and {account} are filled in per stack by apply().
         "applies_to": [
-            "Resource::arn:aws:ssm:ap-south-1:111111111111:parameter/razorpay/*",
-            "Resource::arn:aws:ssm:ap-south-1:222222222222:parameter/razorpay/*",
+            "Resource::arn:aws:ssm:{region}:{account}:parameter/razorpay/*",
         ],
     },
     {
@@ -126,7 +126,10 @@ def apply(app: cdk.App) -> None:
         for entry in SUPPRESSIONS:
             kwargs: dict = {"id": entry["id"], "reason": entry["reason"]}
             if "applies_to" in entry:
-                kwargs["applies_to"] = entry["applies_to"]
+                kwargs["applies_to"] = [
+                    a.format(account=stack.account, region=stack.region)
+                    for a in entry["applies_to"]
+                ]
             NagSuppressions.add_stack_suppressions(
                 stack,
                 suppressions=[NagPackSuppression(**kwargs)],

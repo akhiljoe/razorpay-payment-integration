@@ -33,7 +33,7 @@
         "region": "ap-south-1"
       }
     },
-    "razorpay:ops_email": "ops@example.com",
+    "razorpay:ops_email": "REPLACE_WITH_OPS_EMAIL@example.com",
     "razorpay:budget_thresholds_usd": [5, 25, 50],
     "razorpay:domain": {
       "dev": {

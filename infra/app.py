@@ -38,11 +38,19 @@ def main() -> None:
         sys.stderr.write("no razorpay:env context found in cdk.json; nothing to synth\n")
         return
 
-    ops_email = app.node.try_get_context("razorpay:ops_email")
+    # cdk.json ships placeholder account IDs and ops email. Real values come
+    # from the environment so they never need to be committed:
+    #   RAZORPAY_ACCOUNT_DEV / RAZORPAY_ACCOUNT_PROD  (one per razorpay:env key)
+    #   RAZORPAY_OPS_EMAIL
+    ops_email = os.environ.get("RAZORPAY_OPS_EMAIL") or app.node.try_get_context(
+        "razorpay:ops_email"
+    )
     budget_thresholds = app.node.try_get_context("razorpay:budget_thresholds_usd") or [5, 25, 100]
 
     for env_name, env_cfg in envs.items():
-        account = env_cfg.get("account")
+        account = os.environ.get(f"RAZORPAY_ACCOUNT_{env_name.upper().replace('-', '_')}") or env_cfg.get(
+            "account"
+        )
         region = env_cfg.get("region", "ap-south-1")
         # Allow overriding from process env so CI can pin a per-branch account.
         if account == "REPLACE_WITH_ACCOUNT_ID":

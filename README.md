@@ -2,6 +2,14 @@
 
 A production-grade Razorpay payment integration shipped as a Python library plus a TypeScript checkout widget. Multi-tenant, idempotent, observable, locally testable end-to-end without any cloud dependency.
 
+**Stack:** Python 3 (FastAPI, asyncpg, Alembic, OpenTelemetry) · PostgreSQL · AWS (Lambda, SQS FIFO, KMS, SSM, CDK) · TypeScript (React + vanilla widget) · LocalStack · GitHub Actions (cdk-nag, Checkov, gitleaks)
+
+## Authorship
+
+Designed and architected by [Akhil Joe](https://github.com/akhiljoe): the system design, architecture, invariants, security model, AWS migration plan and every trade-off documented in [`designs/`](designs/) are my decisions.
+
+Implementation was built with [Claude Code](https://claude.com/claude-code) as a pair programmer, working from those designs phase by phase. The agent configuration used for that ([`CLAUDE.md`](CLAUDE.md) and [`.claude/`](.claude/): project rules, review commands, a security-auditor agent) is kept in the repo on purpose, as part of how the project was engineered.
+
 ## Status
 
 **16 phases complete, fully tested locally.** Cloud deploy (Phase 17) is documented but not executed — the artifact is shippable as-is for any host that has its own AWS infrastructure.
@@ -96,10 +104,10 @@ If you have 30 minutes:
 2. Read one runbook of your choice from `docs/runbooks/`.
 3. Skim [designs/DESIGN_v6.md](designs/DESIGN_v6.md) Section 17 (the lessons learned).
 
-## License + status
+## Notes on this public version
 
-Not currently licensed for redistribution; project is in development for internal use. Contact the owner before forking.
+Account IDs, domains and contact addresses in the docs and `infra/cdk.json` are placeholders (`111111111111`, `example.com`, `Demo Store`). See [infra/README.md](infra/README.md#context-overrides) for supplying real values at deploy time.
 
----
+## License
 
-Bug reports, design discussions: open an issue in the repo. Production incidents follow the [incident checklist runbook](docs/runbooks/incident-checklist.md).
+[MIT](LICENSE). Bug reports and design discussions are welcome as issues.
