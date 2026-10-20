@@ -918,8 +918,8 @@ Recommended ordering (some have dependencies):
 5. **Security Hub** (works best with GuardDuty + Inspector + Config feeding it)
 6. **Inspector** (independent)
 7. **AWS Config** (independent but slow to evaluate; turn on with Security Hub)
-8. **RDS/Aurora migration** (large; weekend operation; do dev first)
-9. **Aurora Global DB** (depends on #8)
+8. **RDS in VPC**, Enable 7 (large; weekend operation; do dev first)
+9. **Aurora Global DB**, Enable 8 (depends on #8; replaces the RDS instance with an Aurora cluster)
 
 ### Cost ladder summary
 
@@ -931,8 +931,8 @@ Recommended ordering (some have dependencies):
 | Lite + WAF + Inspector + GuardDuty + Security Hub | ~$60 |
 | Lite + WAF + all compliance services (Inspector + Config + GuardDuty + Security Hub) | ~$80-100 |
 | All of the above + Neon Launch plan | ~$120-140 |
-| All of the above + RDS/Aurora migration (Stage 2) | ~$400-500 |
-| All of the above + Aurora Global DB | ~$500-700 |
+| All of the above + RDS in VPC (Stage 2) | ~$170-320 |
+| All of the above + Aurora Global DB | ~$570-1,120 |
 
 Each step is a feature toggle and a `cdk deploy`. No code change required.
 
