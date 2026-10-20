@@ -524,3 +524,24 @@ Any PR touching these lines must update this file or attest no cost impact.
 | CloudWatch Dashboards | $0 (free tier) | same |
 | CloudTrail | $0 + <$1 S3 | <https://aws.amazon.com/cloudtrail/pricing/> |
 | Route 53 | $0 (using Cloudflare for DNS) | <https://aws.amazon.com/route53/pricing/> |
+| ACM | $0 | <https://aws.amazon.com/certificate-manager/pricing/> |
+| SNS | $0 | <https://aws.amazon.com/sns/pricing/> |
+| Neon (external) | $0 | <https://neon.tech/pricing> |
+| **Total today** | **~$13-18** | |
+| **+ WAF (when triggered)** | **+$22** | <https://aws.amazon.com/waf/pricing/> |
+
+---
+
+## 11. Open Cost-Related Questions
+
+Items to verify or revisit:
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Actual Inspector for Lambda pricing in ap-south-1 (when enabled) | Verify pricing page; service stays off until needed |
+| 2 | Actual S3 ap-south-1 pricing per GB | Verify; typically ~10% premium over us-east-1 |
+| 3 | AWS Activate credits available | Operator to confirm if eligible (startup credits exist) |
+| 4 | GuardDuty event volume after 30-day free trial (when enabled) | Re-baseline after first month of GD enabled |
+| 5 | Actual CloudWatch Logs ingestion per Lambda invocation | Measure with first 1000 production invocations |
+| 6 | Razorpay published IP range stability | Monthly check; alarm if WAF allow-list hit count = 0 |
+| 7 | Neon Launch plan timing (when free tier exhausts) | Monitor Neon dashboard storage + compute usage |

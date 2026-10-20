@@ -68,7 +68,7 @@ cd example/backend && uv run --project ../../razorpay_checkout uvicorn main:app 
 uv run --project razorpay_checkout python scripts/local-pump.py
 ```
 
-Open <http://localhost:8000/dev/dashboard> and click **Run all scenarios in sequence** to watch payments flow end to end. Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md).
+Open <http://localhost:8000/dev/dashboard> and click **▶ Run All** to watch payments flow end to end. Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md).
 
 ### 2. Add it to your app
 

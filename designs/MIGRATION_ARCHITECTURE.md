@@ -885,3 +885,103 @@ CDK constructs read these flags and conditionally instantiate.
 | **Verification** | RDS console shows Global Cluster with primary + secondary region. Replication lag metric < 1 sec. Failover test from secondary region succeeds. |
 | **Rollback** | Documented in cutover runbook; non-trivial. Disable secondary region first, then promote primary, then flip flag. |
 | **Network posture** | Inherits VPC posture from Enable 7. Secondary region requires its own VPC with peering or Transit Gateway. |
+
+### Enable 9: Neon Launch Plan Upgrade (database scale, not AWS toggle)
+
+| Field | Value |
+|---|---|
+| **Trigger** | Neon free tier exhausted (>400 MB storage OR >80 compute hours/mo) |
+| **Cost delta** | +$19/env/mo ($38 combined) |
+| **Change** | In the Neon dashboard, upgrade the project plan to Launch. No CDK change. |
+| **Verification** | Neon console shows plan = Launch; storage cap raised to 10 GB; compute hours cap raised |
+| **Rollback** | Downgrade plan in Neon dashboard (only possible if usage drops back below free tier limits) |
+| **Effect on AWS** | None. DSN unchanged. Lambdas continue to operate. |
+
+### Enable 10: Per-Tenant Fulfillment Hook Outbound AWS Permissions
+
+| Field | Value |
+|---|---|
+| **Trigger** | A tenant's `FulfillmentHook` needs to publish to a tenant-owned SNS topic, write to a tenant S3 bucket, or call any other AWS API |
+| **Cost delta** | $0 (only IAM policy expansion) |
+| **Change** | Edit `designs/iam-policies/fulfillment.json` to add a per-tenant ARN scope; regenerate CDK; `cdk deploy razorpay-{env}-payments` |
+| **Verification** | Fulfillment Lambda can perform the tenant action without `AccessDenied` |
+| **Rollback** | Revert policy edit, redeploy |
+
+### Enablement order if multiple triggers fire at once
+
+Recommended ordering (some have dependencies):
+
+1. **WAF first** (most common first trigger; cheap; no dependencies)
+2. **Provisioned Concurrency** (independent; cheap)
+3. **Neon Launch plan** (independent; doesn't touch CDK)
+4. **GuardDuty** (independent; cheap)
+5. **Security Hub** (works best with GuardDuty + Inspector + Config feeding it)
+6. **Inspector** (independent)
+7. **AWS Config** (independent but slow to evaluate; turn on with Security Hub)
+8. **RDS/Aurora migration** (large; weekend operation; do dev first)
+9. **Aurora Global DB** (depends on #8)
+
+### Cost ladder summary
+
+| Configuration | Combined monthly cost |
+|---|---|
+| Lite (today) | ~$14 |
+| Lite + WAF | ~$36 |
+| Lite + WAF + Provisioned Concurrency | ~$52 |
+| Lite + WAF + Inspector + GuardDuty + Security Hub | ~$60 |
+| Lite + WAF + all compliance services (Inspector + Config + GuardDuty + Security Hub) | ~$80-100 |
+| All of the above + Neon Launch plan | ~$120-140 |
+| All of the above + RDS/Aurora migration (Stage 2) | ~$400-500 |
+| All of the above + Aurora Global DB | ~$500-700 |
+
+Each step is a feature toggle and a `cdk deploy`. No code change required.
+
+---
+
+## Risk Register
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| 1 | Razorpay rotates source IPs without notice | Medium | High | Monthly runbook check; alarm on Razorpay IP rule hit count = 0 |
+| 2 | Neon free tier exhausted earlier than projected | Medium | Low | Graduate to Launch plan; trivial |
+| 3 | Neon outage during business hours | Low | High | Razorpay retries cover short outages; longer triggers DR procedure |
+| 4 | Producer cold start exceeds 500 ms without Provisioned Concurrency | Medium | High (SLA breach) | Cold-start budget measured at ~200 ms; if breached, flip `provisioned_concurrency_enabled` |
+| 5 | OIDC trust policy misconfigured allowing unauthorized repo | Low | Critical | Trust policy `StringLike` on full repo path; cdk-nag rule; quarterly review |
+| 6 | KMS key deletion by mistake | Low | Critical (data unrecoverable) | 30-day mandatory window; CloudWatch alarm on `kms:ScheduleKeyDeletion` |
+| 7 | Alembic migration locks Neon for >30 s | Medium | Medium | `lock_timeout=5s` on migration session; pre-deploy validation |
+| 8 | CloudFront cache poisoning of `/latest/widget.js` | Low | Critical | Versioned paths; SRI hash required; CloudFront OAC; immutable cache |
+| 9 | Object Lock retention conflicts with future legal deletion need | Low | Medium | 7-year retention matches Indian payment record-keeping requirements; consult legal before changing |
+| 10 | Cost-amplification attack on webhook URL | Medium | Medium | Producer Reserved Concurrency = 50 caps blast radius; alarm at 1000/min triggers WAF |
+
+---
+
+## Assumptions and Implementation Verification Checklist
+
+Each assumption to be resolved before the affected phase.
+
+| # | Item | Assumption | Where to verify | Owner |
+|---|---|---|---|---|
+| 1 | DLQ pollers execution model | SQS-triggered Lambdas (not EventBridge); re-drive is manual via `scripts/dlq-replay.py` | `razorpay_checkout/lambdas/*_dlq_poller.py` handler signatures | Akhil |
+| 2 | Read-only PostgreSQL role | `razorpay_ro` exists or added in Alembic `0008` before Phase 4 | `razorpay_checkout/razorpay_checkout/migrations/versions/` | Akhil |
+| 3 | Tenant fulfillment hook AWS perms | No per-tenant AWS API access needed | `razorpay_checkout/fulfillment.py` + any tenant hook impls | Akhil |
+| 4 | Custom domain ownership | **RESOLVED:** example.com owned, DNS at Cloudflare | Cloudflare console | Akhil |
+| 5 | Razorpay IP allow-list source | Razorpay publishes IP range in public docs | <https://razorpay.com/docs/webhooks/> | Akhil |
+| 6 | Tenant count and growth | **RESOLVED:** 2 fixed (operator's own websites), no planned growth | Confirmed | Akhil |
+| 7 | GitHub Environments configured | `dev` and `prod` Environments exist with required reviewers on prod | GitHub Settings | Akhil |
+| 8 | Cost ceiling | $14/mo idle is firm; $36/mo when WAF on is firm | Confirmed | Akhil |
+| 9 | DR posture | 4-hour RTO acceptable | Confirmed | Akhil |
+| 10 | PCI scope | Razorpay holds cardholder data; we hold metadata only | Razorpay docs + internal compliance | Akhil |
+| 11 | Stale Paid Monitor scheduling | EventBridge `Schedule.rate(Duration.minutes(5))` targets the Lambda | `infra/stacks/payments.py` after deploy | Akhil |
+| 12 | Tenant secret JSON shape | `{ key_id, key_secret, webhook_secret, webhook_secret_previous? }` | `razorpay_checkout/{config,tenants}.py` | Akhil |
+| 13 | SQS FIFO High Throughput Mode in ap-south-1 | Available and cost-neutral | AWS docs | Akhil |
+| 14 | Lambda base image | **RESOLVED:** `public.ecr.aws/lambda/python:3.12` (x86_64) | ECR Public | Akhil |
+| 15 | Razorpay 500 ms SLA behavior on timeout | Retries with backoff; may use new event_id | Razorpay docs | Akhil |
+| 16 | Neon region availability | `aws-ap-south-1` available | Neon console | Akhil |
+| 17 | Neon latency from ap-south-1 Lambdas | <50 ms p95 acceptable | Measure during Phase 4 smoke | Akhil |
+| 18 | S3 Object Lock retention 7 years | Acceptable for compliance | Internal | Akhil |
+
+---
+
+## Conflict with DESIGN_v6.md: None
+
+This architecture serves DESIGN_v6.md §11 "Free Track posture" exactly. The Producer-Consumer split, the IAM security model, the SQS FIFO contract, the correlation ID propagation, and the state machine are all preserved unchanged. Feature toggles for the deferred security services do not affect application behavior.

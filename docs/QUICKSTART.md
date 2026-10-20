@@ -93,7 +93,7 @@ Pass criterion: `pump_ready queues=['webhook-pump','fulfillment-pump']`.
 Open **`http://localhost:8000/dev/dashboard`** in Chrome.
 
 - Click **Reset (purge DB + queues)**.
-- Click **Run all scenarios in sequence**.
+- Click **▶ Run All**.
 - Watch all 11 scenarios turn green within ~40 seconds.
 
 Then **`http://localhost:8000/dev/shop`** if you have Razorpay test keys.

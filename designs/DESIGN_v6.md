@@ -550,7 +550,7 @@ sequenceDiagram
     WQ->>WC: Deliver
     WC->>WC: Bind correlation_id from MessageAttributes
     WC->>DB: INSERT webhook_events ON CONFLICT DO NOTHING (received_at from envelope)
-    WC->>DB: BEGIN; SELECT orders FOR UPDATE
+    WC->>DB: BEGIN, then SELECT orders FOR UPDATE
     WC->>WC: should_skip(event, status, captured_payment_exists)
     alt PROCEED
         WC->>DB: Assert event_amount == order.amount
