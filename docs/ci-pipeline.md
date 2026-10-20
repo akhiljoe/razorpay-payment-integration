@@ -22,11 +22,11 @@ Triggers on every **push to `main`** and every **pull request** targeting `main`
 
 | Job | Runs in parallel with | Purpose |
 |---|---|---|
-| **pre-commit** | python-tests, cdk-synth-nag | Fast formatting + secret scan |
-| **python-tests** | pre-commit, cdk-synth-nag | Unit tests + type check |
-| **cdk-synth-nag** | pre-commit, python-tests | Compile CDK, run cdk-nag security aspect, publish CloudFormation as artifact |
-| **checkov** | (waits on cdk-synth-nag) | Second pass over the synthesised CloudFormation |
-| **infracost** | (waits on cdk-synth-nag) | Comment on the PR with cost diff vs base branch |
+| **pre-commit** | python-tests, infra-synth-security | Fast formatting + secret scan |
+| **python-tests** | pre-commit, infra-synth-security | Unit tests + type check |
+| **infra-synth-security** | pre-commit, python-tests | Compile CDK, run cdk-nag security aspect, publish CloudFormation as artifact |
+| **checkov** | (waits on infra-synth-security) | Second pass over the synthesised CloudFormation |
+| **infracost** | (waits on infra-synth-security) | Comment on the PR with cost diff vs base branch |
 
 Total wall-clock time: ~3 to 5 minutes.
 
@@ -89,7 +89,7 @@ uv sync --extra dev
 uv run ruff check . && uv run mypy && uv run alembic upgrade head && uv run pytest -q
 ```
 
-### 3. `cdk-synth-nag`
+### 3. `infra-synth-security`
 
 #### What it does
 
@@ -212,8 +212,8 @@ concurrency:
 
 1. You run `git push origin main`.
 2. GitHub triggers the workflow.
-3. **In parallel**: `pre-commit`, `python-tests`, `cdk-synth-nag` all start on fresh Ubuntu 24 VMs.
-4. As soon as `cdk-synth-nag` uploads its artifact, `checkov` and `infracost` (PR only) start.
+3. **In parallel**: `pre-commit`, `python-tests`, `infra-synth-security` all start on fresh Ubuntu 24 VMs.
+4. As soon as `infra-synth-security` uploads its artifact, `checkov` and `infracost` (PR only) start.
 5. All 5 jobs report status back to the commit. GitHub merges branch-protection rules require all configured ones to be green before merge.
 
 ## How to Debug a Failing Job

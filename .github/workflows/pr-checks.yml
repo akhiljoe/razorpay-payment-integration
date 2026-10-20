@@ -1,11 +1,11 @@
 # PR safety checks. Runs on every pull request and push to main.
 #
 # Jobs:
-#   pre-commit     fast hooks (gitleaks, ruff, formatting). Mirrors local pre-commit.
-#   python-tests   unit tests + mypy for razorpay_checkout/
-#   cdk-synth-nag  cdk synth + cdk-nag for infra/
-#   checkov        Checkov scan against the synthesised CloudFormation
-#   infracost      Cost diff comment on the PR
+#   pre-commit            fast hooks (gitleaks, ruff, formatting). Mirrors local pre-commit.
+#   python-tests          unit tests + mypy for razorpay_checkout/
+#   infra-synth-security  cdk synth + cdk-nag for infra/
+#   checkov               Checkov scan against the synthesised CloudFormation
+#   infracost             Cost diff comment on the PR
 #
 # Required GitHub repo secrets:
 #   INFRACOST_API_KEY    free key from https://www.infracost.io/
@@ -78,7 +78,7 @@ jobs:
         working-directory: razorpay_checkout
         run: uv run pytest -q --maxfail=1 -m "not requires_localstack"
 
-  cdk-synth-nag:
+  infra-synth-security:
     runs-on: ubuntu-latest
     outputs:
       cdk-out-path: ${{ steps.synth.outputs.path }}
@@ -114,7 +114,7 @@ jobs:
 
   checkov:
     runs-on: ubuntu-latest
-    needs: cdk-synth-nag
+    needs: infra-synth-security
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -153,7 +153,7 @@ jobs:
 
   infracost:
     runs-on: ubuntu-latest
-    needs: cdk-synth-nag
+    needs: infra-synth-security
     if: github.event_name == 'pull_request'
     env:
       INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}

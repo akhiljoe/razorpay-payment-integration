@@ -23,7 +23,7 @@ Five jobs run on every PR:
 |---|---|---|
 | `pre-commit` | Mirrors local pre-commit | Yes |
 | `python-tests` | ruff + mypy + alembic upgrade + pytest | Yes |
-| `cdk-synth-nag` | `cdk synth` with `AwsSolutionsChecks` aspect | Yes (on cdk-nag errors) |
+| `infra-synth-security` | `cdk synth` with `AwsSolutionsChecks` aspect | Yes (on cdk-nag errors) |
 | `checkov` | Scan synthesised CloudFormation | Yes (on hard fails) |
 | `infracost` | Posts a cost diff comment on the PR | No (advisory) |
 
