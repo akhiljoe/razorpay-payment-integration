@@ -1,152 +1,130 @@
 # Razorpay Payment Integration
 
-A production-grade Razorpay payment integration shipped as a Python library plus a TypeScript checkout widget. Multi-tenant, idempotent, observable, locally testable end-to-end without any cloud dependency.
+Accept Razorpay payments in your app without losing a payment or processing one twice.
 
-**Stack:** Python 3 (FastAPI, asyncpg, Alembic, OpenTelemetry) · PostgreSQL · AWS (Lambda, SQS FIFO, KMS, SSM, CDK) · TypeScript (React + vanilla widget) · LocalStack · GitHub Actions (cdk-nag, Checkov, gitleaks)
+## What it is
 
-## Authorship
+A ready-made payment backend plus a checkout button:
 
-Designed and architected by [Akhil Joe](https://github.com/akhiljoe): the system design, architecture, invariants, security model, AWS migration plan and every trade-off documented in [`designs/`](designs/) are my decisions.
+- **Python library** (`razorpay_checkout/`): a FastAPI router that creates orders, receives Razorpay webhooks and runs your fulfillment code once a payment succeeds.
+- **Checkout widget** (`packages/checkout-widget/`): a React component or plain-JS button that opens Razorpay's payment window.
+- **AWS infrastructure** (`infra/`): CDK code to run it serverless on Lambda + SQS.
 
-Implementation was built with [Claude Code](https://claude.com/claude-code) as a pair programmer, working from those designs phase by phase. The agent configuration used for that ([`CLAUDE.md`](CLAUDE.md) and [`.claude/`](.claude/): project rules, review commands, a security-auditor agent) is kept in the repo on purpose, as part of how the project was engineered.
+One deployment can serve several stores (tenants), each with its own Razorpay keys.
 
-## Status
+## Why use it
 
-**Application: 16 build phases complete, fully tested locally** against Postgres + LocalStack.
+Wiring Razorpay's checkout is easy. Handling what happens after the payment is where things go wrong. This project handles that part:
 
-**AWS deployment: in progress.** Phases 1–2 of 10 are done (account hardening, IAM, GitHub OIDC deploy roles); CDK stacks, database and cutover are next. Live tracker: [docs/deployment-progress.md](docs/deployment-progress.md). The library is shippable as-is for any host with its own AWS infrastructure.
+- **No double processing.** Razorpay retries webhooks. Each event is applied exactly once, even under concurrent retries.
+- **No lost payments.** Events go through queues with automatic retries and dead-letter queues, plus a reconcile endpoint to catch anything missed.
+- **Secure by default.** Every webhook signature is verified, and the public-facing webhook receiver has no database access at all.
+- **Testable on your laptop.** The whole flow runs locally with Docker. No AWS account needed.
+- **Ready to operate.** Runbooks, dashboards and a security-checked CI pipeline are included.
 
-- 240+ pytest tests + 3 chaos tests pass against Postgres + LocalStack
-- 11/11 dashboard scenarios prove every Critical Invariant end-to-end
-- 15 vitest tests + 0 npm-audit runtime vulnerabilities for the widget
-- 5 operator runbooks + 4 cloud onboarding docs + 13 documented Section 17 learnings
-
-## What's in the box
-
-| Component | Purpose |
-|---|---|
-| `razorpay_checkout/` | Python package — FastAPI router, async DB, OTel, idempotent consumer + fulfillment processors |
-| `packages/checkout-widget/` | TypeScript npm package — React + vanilla adapters around Razorpay's checkout.js |
-| `example/backend/` | FastAPI dev backend wiring the whole flow + a 17-step Payment Journey dashboard + a buyer-perspective storefront |
-| `scripts/` | Operator CLIs: `local-fixtures`, `local-pump`, `razorpay-simulator`, `dlq-replay` |
-| `infra/` | AWS CDK Python (FoundationStack + PaymentsStack) for cloud deploy |
-| `docs/` | All operational and planning docs (runbooks, cloud onboarding, diagrams, architecture overview, quickstart, commands, troubleshooting, test/scale/prod-migration plans, phase history, cost analysis, devops tooling setup) |
-| `designs/` | Formal design + AWS migration architecture + IAM policies. Source of truth lives here. |
-
-## Where to start, by role
-
-| You are | Read |
-|---|---|
-| New developer running locally | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
-| Looking up "how do I X" | [docs/COMMANDS.md](docs/COMMANDS.md) |
-| Debugging a failure | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
-| Wanting the system overview | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| On-call, something broke | [docs/runbooks/](docs/runbooks/) |
-| Preparing to deploy to AWS | [designs/MIGRATION_WRITEUP.md](designs/MIGRATION_WRITEUP.md) and [designs/MIGRATION_ARCHITECTURE.md](designs/MIGRATION_ARCHITECTURE.md) |
-| Reading the formal spec | [designs/DESIGN_v6.md](designs/DESIGN_v6.md) |
-| Trying to understand past decisions | [docs/PHASES.md](docs/PHASES.md) + `git log` |
-| Estimating monthly AWS spend | [docs/cost-analysis.md](docs/cost-analysis.md) |
-| AI agent working on the codebase | [CLAUDE.md](CLAUDE.md) |
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-  subgraph Customer
-    Browser["Customer browser<br/>(checkout widget)"]
-  end
+  Browser["Customer browser<br/>(checkout widget)"]
+  API["Your backend<br/>(payments router)"]
+  RZP["Razorpay"]
+  Producer["Webhook receiver<br/>verifies signature<br/>no DB access"]
+  WQ[("Events queue")]
+  Consumer["Event processor<br/>applies each event once"]
+  FQ[("Fulfillment queue")]
+  Fulfillment["Fulfillment worker<br/>runs your code"]
+  DB[("Postgres")]
 
-  subgraph Razorpay
-    RZP["Razorpay API<br/>+ Webhook"]
-  end
-
-  subgraph "This system"
-    direction TB
-    Producer["Webhook Producer<br/>(FastAPI Lambda)<br/>NO DB ACCESS"]
-    WQ[("webhook-events.fifo")]
-    WDLQ[("webhook-events-dlq.fifo")]
-    Consumer["Webhook Consumer<br/>(Lambda)"]
-    FQ[("fulfillment-queue.fifo")]
-    FDLQ[("fulfillment-dlq.fifo")]
-    Fulfillment["Fulfillment Lambda"]
-    DB[("Postgres<br/>orders / payments / refunds<br/>webhook_events / order_events")]
-    Hook["FulfillmentHook<br/>(host-provided)"]
-  end
-
-  Browser -->|POST /orders| Producer
-  Browser -->|Razorpay checkout.js| RZP
-  RZP -->|webhook + signature| Producer
-  Producer -->|publish| WQ
-  WQ -->|drain| Consumer
-  Consumer -.->|5 retries → DLQ| WDLQ
-  Consumer <-->|FOR UPDATE| DB
-  Consumer -->|publish| FQ
-  FQ -->|drain| Fulfillment
-  Fulfillment -.->|5 retries → DLQ| FDLQ
-  Fulfillment <-->|FOR UPDATE| DB
-  Fulfillment -->|invoke| Hook
+  Browser -->|1. create order| API
+  Browser -->|pay| RZP
+  RZP -->|2. payment webhook| Producer
+  Producer --> WQ --> Consumer
+  Consumer <--> DB
+  Consumer -->|3. payment confirmed| FQ --> Fulfillment
+  Fulfillment <--> DB
 ```
 
-In one sentence: a FastAPI router receives Razorpay webhooks, fast-verifies HMAC signatures **without any database access**, publishes onto an SQS FIFO queue; a separate consumer Lambda drains the queue, applies an event-type-aware idempotency guard inside a `SELECT ... FOR UPDATE` transaction, advances the order's state machine, and publishes to a second SQS FIFO queue; a fulfillment Lambda drains that, invokes the host's `FulfillmentHook`, and transitions to terminal status.
+1. The customer pays through the widget, using an order your backend created.
+2. Razorpay sends a webhook. The receiver checks the signature and queues it.
+3. The processor updates the order once, then the fulfillment worker calls your code (ship the item, grant access, and so on).
 
-More pictures in [docs/diagrams/](docs/diagrams/): the [webhook sequence](docs/diagrams/webhook-flow.md) for one payment event, the [order state machine](docs/diagrams/state-machine.md), the detailed [system architecture](docs/diagrams/system-architecture.md) and the [AWS deployment topology](docs/diagrams/deployment-topology.md). [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the 10 Critical Invariants that make this safe.
+Failed steps retry automatically. Anything that keeps failing lands in a dead-letter queue for review.
 
-## Run it locally
+## How to use it
+
+### 1. Try it locally
+
+Requires Docker, [uv](https://docs.astral.sh/uv/) and Node 20+.
 
 ```bash
 docker compose up -d postgres localstack
-cd razorpay_checkout && uv sync --extra dev && uv run alembic upgrade head
-```
+cd razorpay_checkout && uv sync --extra dev && uv run alembic upgrade head && cd ..
 
-Three terminals:
-
-```bash
 # Terminal A: backend
 cd example/backend && uv run --project ../../razorpay_checkout uvicorn main:app --reload --port 8000
 
-# Terminal B: consumer pump
+# Terminal B: queue worker
 uv run --project razorpay_checkout python scripts/local-pump.py
-
-# Terminal C: open browser
-# http://localhost:8000/dev/dashboard   — Mission Control: KPIs + 17-step Payment Journey + 11 scenarios
-# http://localhost:8000/admin/dashboard — read-only ops view (gated by X-Admin-Api-Key)
-# http://localhost:8000/dev/shop        — buyer-perspective storefront
 ```
 
-The dev dashboard is gated on `RAZORPAY_DEV_ROUTES_ENABLED=true` (off by
-default). The admin dashboard is gated on `X-Admin-Api-Key` matching
-`RAZORPAY_ADMIN_API_KEY`. Both are safe to expose in different
-environments: dev locally, admin behind a per-operator proxy.
+Open <http://localhost:8000/dev/dashboard> and click **Run all scenarios in sequence** to watch payments flow end to end. Full walkthrough: [docs/QUICKSTART.md](docs/QUICKSTART.md).
 
-Full step-by-step in [docs/QUICKSTART.md](docs/QUICKSTART.md).
+### 2. Add it to your app
 
-## Key invariants (the load-bearing ones)
+**Backend.** Mount the router and supply your fulfillment logic:
 
-1. The **Webhook Producer holds no database credentials.** This is enforced in IAM, not just in code.
-2. Every query against `orders`, `payments`, `refunds`, `webhook_events`, `order_events` filters by `tenant_id`. Enforced by `OrderService` and `WebhookConsumer`, never the caller.
-3. **Event-type-aware idempotency** inside a `SELECT ... FOR UPDATE` transaction. `event_id ON CONFLICT DO NOTHING` is the fast path; the primary guard runs after the row lock.
-4. **DB commit before any side effect.** SQS publishes, logs, external calls all happen after the consumer's transaction commits.
-5. **Correlation IDs propagate end to end** across the Producer → SQS → Consumer → SQS → Fulfillment hops via MessageAttributes.
+```python
+from fastapi import FastAPI
+from razorpay_checkout import payments_router
 
-Full list in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Each invariant has at least one test asserting it.
+class GrantAccess:
+    """Called once per successful payment. Must be safe to retry."""
 
-## How to evaluate quickly
+    async def fulfill(self, order_id: str, tenant_id: str, amount: int, metadata: dict) -> None:
+        ...  # e.g. mark the order paid in your system, send the receipt
 
-If you have 5 minutes:
+app = FastAPI(lifespan=lifespan)  # lifespan sets up DB, Razorpay client, queues and app.state.hook = GrantAccess()
+app.include_router(payments_router, prefix="/payments")
+```
 
-1. `git log --oneline -10` — see the phase commits.
-2. Open `http://localhost:8000/dev/dashboard` (after running the 3 terminals above), click **Run all scenarios in sequence**. Watch 11 invariants prove themselves.
+[example/backend/main.py](example/backend/main.py) has the complete `lifespan` wiring. Settings come from `RAZORPAY_*` environment variables; see [.env.example](.env.example).
 
-If you have 30 minutes:
+**Frontend.** Drop in the button:
 
-1. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-2. Read one runbook of your choice from `docs/runbooks/`.
-3. Skim [designs/DESIGN_v6.md](designs/DESIGN_v6.md) Section 17 (the lessons learned).
+```tsx
+import { RazorpayCheckout } from "@akhiljoe/checkout-widget";
 
-## Notes on this public version
+<RazorpayCheckout
+  orderEndpoint="/payments/orders"
+  receipt={cartId}
+  onSuccess={(result) => showThankYou(result.orderId)}
+  onFailure={(error) => showError(error.description)}
+  onDismiss={() => {}}
+/>
+```
 
-Account IDs, domains and contact addresses in the docs and `infra/cdk.json` are placeholders (`111111111111`, `example.com`, `Demo Store`). See [infra/README.md](infra/README.md#context-overrides) for supplying real values at deploy time.
+The amount always comes from your server, never from the browser. The library and widget aren't published to PyPI or npm yet, so install them from this repo.
+
+### 3. Deploy to AWS
+
+`infra/` deploys the queues, Lambdas and alarms with CDK. Account IDs and domains in `infra/cdk.json` are placeholders; see [infra/README.md](infra/README.md#context-overrides) for supplying real values.
+
+## Status
+
+The application is complete and tested locally: 240+ Python tests, chaos tests and 15 widget tests. The AWS rollout is in progress ([tracker](docs/deployment-progress.md)).
+
+## Learn more
+
+- [Architecture](docs/ARCHITECTURE.md): design overview and the guarantees it relies on
+- [Diagrams](docs/diagrams/): webhook sequence, order state machine, AWS topology
+- [Runbooks](docs/runbooks/): what to do when something breaks
+- [Full design spec](designs/DESIGN_v6.md) and [all docs](docs/README.md)
+
+## Authorship
+
+Designed and architected by [Akhil Joe](https://github.com/akhiljoe): the system design, architecture, security model and the trade-offs in [`designs/`](designs/) are my decisions. Built with [Claude Code](https://claude.com/claude-code) as a pair programmer; its project rules live in [`CLAUDE.md`](CLAUDE.md) and [`.claude/`](.claude/).
 
 ## License
 
-[MIT](LICENSE). Bug reports and design discussions are welcome as issues.
+[MIT](LICENSE)
